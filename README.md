@@ -23,7 +23,7 @@
 兩版的文字**幾乎完全不同**。重製版不是換皮——把正規化後的字串拿去比對，兩版只有 4.9% 重疊，敘事文字整個重寫過。所以兩邊都是各自翻的。
 
 <p align="center">
-  <img src="docs/assets/ega-intro-cht.png" width="420" alt="EGA 版開場字幕的中文">
+  <img src="docs/assets/ega-title-cht.png" width="420" alt="EGA 版標題畫面，logo 下方是中文副標">
   <img src="docs/assets/ega-menu-cht.png" width="420" alt="EGA 版的中文選單與狀態列">
 </p>
 

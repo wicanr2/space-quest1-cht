@@ -48,6 +48,9 @@ chmod +x "$OUT/修復-macOS.command"
 # 改過內容 → 原簽章失效，移除比留著壞簽好
 rm -rf "$APP/Contents/_CodeSignature"
 
-( cd "$OUT" && tar czf "SQ1-${TRACK^^}-CHT-patch-macos-universal.tar.gz" ScummVM.app 啟動-繁體中文.command 修復-macOS.command )
-echo ">> 完成: $OUT/SQ1-${TRACK^^}-CHT-patch-macos-universal.tar.gz"
+# [HARD] macOS 只有 bash 3.2（Apple 因 GPLv3 停在這版），**沒有 ${VAR^^} 這種大寫展開**。
+# 本機 Linux 是 bash 5 測不出來，只有 macOS CI 會爆 "bad substitution"。用 tr 代替。
+TRACK_UC="$(printf '%s' "$TRACK" | tr '[:lower:]' '[:upper:]')"
+( cd "$OUT" && tar czf "SQ1-${TRACK_UC}-CHT-patch-macos-universal.tar.gz" ScummVM.app 啟動-繁體中文.command 修復-macOS.command )
+echo ">> 完成: $OUT/SQ1-${TRACK_UC}-CHT-patch-macos-universal.tar.gz"
 ls -la "$OUT"

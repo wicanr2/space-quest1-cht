@@ -145,7 +145,7 @@ jobs:
           export LDFLAGS="$CXXFLAGS"
           ./configure --disable-all-engines --enable-engine=${{ matrix.engine }} --disable-detection-full \
             --enable-release $LEAN_FLAGS --with-sdl-prefix="$RUNNER_TEMP/sdl-arm64"
-          grep -q "^ENABLE_SCI" config.mk || { echo "### sci engine 未編入(arm64) ###"; exit 12; }
+          grep -qi "^ENABLE_${{ matrix.engine }}" config.mk || { echo "### ${{ matrix.engine }} engine 未編入(arm64) ###"; exit 12; }
           grep -q "^SDL_BACKEND = 1" config.mk || { echo "### SDL 未偵測到(arm64) ###"; exit 13; }
           grep -q "^USE_MT32EMU = 1" config.mk || { echo "### mt32emu 未編入(arm64) ###"; exit 14; }
           make -j"$(sysctl -n hw.ncpu)" scummvm-static
@@ -160,7 +160,7 @@ jobs:
             export LDFLAGS=\"\$CXXFLAGS\"
             ./configure --disable-all-engines --enable-engine=${{ matrix.engine }} --disable-detection-full \
               --enable-release $LEAN_FLAGS --with-sdl-prefix='$RUNNER_TEMP/sdl-x86_64'
-            grep -q '^ENABLE_SCI' config.mk || { echo '### sci engine 未編入(x86_64) ###'; exit 12; }
+            grep -qi '^ENABLE_${{ matrix.engine }}' config.mk || { echo '### ${{ matrix.engine }} engine 未編入(x86_64) ###'; exit 12; }
             grep -q '^SDL_BACKEND = 1' config.mk || { echo '### SDL 未偵測到(x86_64) ###'; exit 13; }
             grep -q '^USE_MT32EMU = 1' config.mk || { echo '### mt32emu 未編入(x86_64) ###'; exit 14; }
             make -j\"\$(sysctl -n hw.ncpu)\" scummvm-static

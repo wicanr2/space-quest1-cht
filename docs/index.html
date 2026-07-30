@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>宇宙傳奇I 酒吧吃角子老虎</title>
+<meta name="description" content="《宇宙傳奇I》柯羅娜酒吧吃角子老虎的瀏覽器重製,規則取材自1991年台灣雜誌完全攻略;並附本作沒有防拷機制的查證說明。">
+<style>
+:root{
+  --bg:#05060d; --bg2:#0a0e2a; --panel:#10142f; --line:#2a3163;
+  --cyan:#55ffff; --yellow:#ffe14d; --magenta:#ff55ff; --red:#ff5555;
+  --green:#55ff55; --dim:#8b93c0; --text:#e8ecff;
+}
+*{box-sizing:border-box}
+html,body{max-width:100%; overflow-x:hidden}
+body{
+  margin:0; background:radial-gradient(ellipse at 50% -10%, var(--bg2) 0%, var(--bg) 65%) fixed;
+  color:var(--text);
+  font-family:ui-monospace,"Cascadia Mono","Noto Sans Mono CJK TC","PingFang TC","Microsoft JhengHei",monospace;
+  line-height:1.75; -webkit-text-size-adjust:100%;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:99; opacity:.12;
+  background:repeating-linear-gradient(to bottom, rgba(0,0,0,.6) 0 1px, transparent 1px 3px);
+}
+a{color:var(--cyan)}
+.wrap{max-width:920px; margin:0 auto; padding:28px 16px 90px}
+header{text-align:center; padding:10px 0 28px; border-bottom:1px solid var(--line); margin-bottom:26px}
+h1{font-size:clamp(20px,4.6vw,32px); margin:0 0 6px; letter-spacing:.03em}
+h1 small{display:block; font-size:.46em; color:var(--yellow); letter-spacing:.18em; font-weight:400; margin-bottom:8px}
+.sub{color:var(--dim); margin:6px 0 0; font-size:14px}
+h2{font-size:19px; color:var(--yellow); border-left:4px solid var(--magenta); padding-left:10px; margin:0 0 14px}
+section{margin-bottom:46px}
+p{margin:0 0 12px}
+
+/* --- 機台 --- */
+.cabinet{
+  background:linear-gradient(#171c44,#0b0e28); border:2px solid var(--line); border-radius:14px;
+  padding:18px; box-shadow:0 0 0 4px #04050c inset, 0 18px 40px rgba(0,0,0,.5);
+}
+.cabinet h3{margin:0 0 4px; font-size:15px; color:var(--cyan); letter-spacing:.1em; text-align:center}
+.cabinet .flavor{color:var(--dim); font-size:13px; text-align:center; margin:0 0 16px}
+
+.reels{
+  display:flex; justify-content:center; gap:10px; background:#04060d; border:3px solid #2f3870;
+  border-radius:8px; padding:14px; box-shadow:0 0 20px rgba(85,255,255,.14) inset;
+}
+.reel{width:76px; height:76px; image-rendering:pixelated}
+.reel.shake{animation:shake .12s linear infinite}
+@keyframes shake{0%{transform:translateX(-2px)}50%{transform:translateX(2px)}100%{transform:translateX(-2px)}}
+
+.readout{text-align:center; margin:12px 0 0; min-height:20px; font-size:13px; color:var(--dim)}
+.readout.win{color:var(--green)}
+.readout.lose{color:var(--red)}
+.readout.big{color:var(--yellow); font-weight:bold}
+
+.controls{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px}
+@media (max-width:520px){.controls{grid-template-columns:1fr}}
+.ctrl-box{background:#0c1030; border:1px solid var(--line); border-radius:8px; padding:10px 12px}
+.ctrl-box .label{font-size:12px; color:var(--dim); letter-spacing:.08em; margin-bottom:6px}
+.row{display:flex; align-items:center; gap:8px}
+.stepper{display:flex; align-items:center; gap:8px}
+.stepper button{
+  width:32px; height:32px; border-radius:6px; border:1px solid var(--line); background:#181f4a; color:var(--text);
+  font-size:16px; cursor:pointer; font-family:inherit;
+}
+.stepper button:disabled{opacity:.35; cursor:not-allowed}
+.stepper .val{min-width:64px; text-align:center; font-size:15px; color:var(--yellow)}
+.balance{font-size:20px; color:var(--green); font-weight:bold}
+
+.spin-row{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap}
+button.act{
+  font:inherit; font-size:15px; padding:11px 16px; border-radius:6px; cursor:pointer;
+  border:1px solid var(--line); background:#1d2450; color:var(--text); flex:1; min-width:110px;
+}
+button.act:hover:not(:disabled){background:#262f6a}
+button.act:disabled{opacity:.4; cursor:not-allowed}
+button.spin{background:linear-gradient(#e77a1a,#aa4c03); border-color:#7a3400; color:#1a0d00; font-weight:bold}
+button.spin:hover:not(:disabled){filter:brightness(1.1)}
+
+/* 電磁鐵 */
+.magnet-box{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.switch{position:relative; width:52px; height:28px; flex:none}
+.switch input{opacity:0; width:0; height:0}
+.switch .track{
+  position:absolute; inset:0; background:#333a70; border-radius:14px; cursor:pointer; transition:.15s;
+  border:1px solid var(--line);
+}
+.switch .track::before{
+  content:""; position:absolute; width:20px; height:20px; left:3px; top:3px; background:#c9cde0;
+  border-radius:50%; transition:.15s;
+}
+.switch input:checked + .track{background:linear-gradient(#ff8a3d,#aa3a00)}
+.switch input:checked + .track::before{transform:translateX(24px); background:#fff2c9}
+
+.heat-wrap{margin-top:10px}
+.heat-bar{height:10px; border-radius:5px; background:#1b2050; border:1px solid var(--line); overflow:hidden}
+.heat-fill{height:100%; width:0%; background:linear-gradient(90deg,var(--green),var(--yellow),var(--red)); transition:width .25s}
+
+.log-box{margin-top:16px; background:#0a0d26; border:1px solid var(--line); border-radius:8px; padding:10px 12px; max-height:180px; overflow-y:auto}
+.log-box .label{font-size:12px; color:var(--dim); letter-spacing:.08em; margin-bottom:6px}
+.log-line{font-size:13px; padding:3px 0; border-bottom:1px dashed #232a5a; color:var(--dim)}
+.log-line:last-child{border-bottom:none}
+.log-line.win{color:var(--green)}
+.log-line.lose{color:#c07a7a}
+.log-line.big{color:var(--yellow)}
+
+/* 賠率表 */
+.tablewrap{overflow-x:auto; border:1px solid var(--line); border-radius:8px}
+table{border-collapse:collapse; width:100%; min-width:480px; font-size:13.5px}
+th,td{padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap}
+th{background:#141a40; color:var(--cyan); font-weight:normal}
+tr:last-child td{border-bottom:none}
+.src{font-size:12px; color:var(--dim); margin-top:8px}
+
+/* 覆蓋層 */
+.overlay{
+  position:fixed; inset:0; background:rgba(2,3,10,.86); display:none; align-items:center; justify-content:center;
+  z-index:200; padding:16px;
+}
+.overlay.show{display:flex}
+.overlay .card{
+  max-width:440px; width:100%; background:#141a40; border:2px solid var(--magenta); border-radius:12px;
+  padding:22px; text-align:center; box-shadow:0 0 40px rgba(255,85,255,.25);
+}
+.overlay .card h3{margin:0 0 12px; color:var(--red); font-size:18px}
+.overlay .card p{color:var(--text); font-size:14px}
+.overlay .card button{margin-top:12px}
+
+/* 防拷區塊 */
+.finding{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px}
+.finding h4{margin:0 0 8px; color:var(--cyan); font-size:14.5px}
+.quote{border-left:3px solid var(--yellow); padding-left:10px; color:var(--dim); font-size:13.5px; margin:8px 0}
+.conclusion{background:#0c1a10; border:1px solid #1d5a2f; border-radius:8px; padding:14px 16px}
+.conclusion h4{color:var(--green); margin:0 0 8px}
+
+footer{text-align:center; color:var(--dim); font-size:12.5px; border-top:1px solid var(--line); padding-top:20px; margin-top:10px}
+footer a{display:inline-block; margin-top:6px}
+.disclaimer{font-size:12px; color:var(--dim); background:#0a0d26; border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-top:16px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <h1><small>SPACE QUEST I · THE SARIEN ENCOUNTER</small>宇宙傳奇I 酒吧吃角子老虎</h1>
+  <p class="sub">柯羅娜星上那台老舊拉霸機的瀏覽器重製 · <a href="https://github.com/wicanr2/space-quest1-cht">space-quest1-cht</a></p>
+</header>
+
+<main>
+
+<section id="slot">
+  <h2>酒吧吃角子老虎</h2>
+  <p>柯羅娜的酒吧角落擺著一台吃角子老虎機,機身鏽跡斑斑,投幣孔卻擦得發亮——顯然常有人光顧。羅傑·威爾科口袋裡還揣著幾枚太空幣,不賭一把說不過去。</p>
+
+  <div class="cabinet">
+    <h3>拉霸機</h3>
+    <p class="flavor">投太空幣,拉一把,看看今天運氣如何。</p>
+
+    <div class="reels">
+      <canvas class="reel" id="reel0" width="96" height="96"></canvas>
+      <canvas class="reel" id="reel1" width="96" height="96"></canvas>
+      <canvas class="reel" id="reel2" width="96" height="96"></canvas>
+    </div>
+    <div class="readout" id="readout">投下太空幣,拉一下霸吧。</div>
+
+    <div class="controls">
+      <div class="ctrl-box">
+        <div class="label">下注</div>
+        <div class="stepper">
+          <button id="betDown" type="button">－</button>
+          <div class="val" id="betVal">10</div>
+          <button id="betUp" type="button">＋</button>
+        </div>
+        <div class="row" style="margin-top:10px; justify-content:space-between">
+          <span class="label" style="margin:0">餘額</span>
+          <span class="balance" id="balanceVal">100</span>
+        </div>
+      </div>
+
+      <div class="ctrl-box">
+        <div class="magnet-box">
+          <div>
+            <div class="label" style="margin:0">強力電磁鐵</div>
+            <div style="font-size:12px; color:var(--dim)">吸附機台,每賭必贏</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="magnetToggle">
+            <span class="track"></span>
+          </label>
+        </div>
+        <div class="heat-wrap" id="heatWrap" style="display:none">
+          <div class="label">機台溫度</div>
+          <div class="heat-bar"><div class="heat-fill" id="heatFill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="spin-row">
+      <button class="act spin" id="spinBtn" type="button">拉霸!</button>
+      <button class="act" id="resetBtn" type="button">重新開始</button>
+    </div>
+
+    <div class="log-box">
+      <div class="label">紀錄</div>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+  <div class="disclaimer">這是致敬重製,並非原版程式碼或資源;《宇宙傳奇I》版權歸 Sierra On-Line 及其權利繼受人所有。</div>
+</section>
+
+<section id="rules">
+  <h2>玩法與傳聞</h2>
+  <p>下面兩條不是我們編的,是 1991 年台灣雜誌《新宇宙傳奇I 完全攻略》(Charles Angel 撰,頁49–55)裡白紙黑字寫的機台行為,重製時原樣照搬:</p>
+
+  <div class="tablewrap">
+    <table>
+      <tr><th>結果</th><th>後果</th></tr>
+      <tr><td>三個太空幣</td><td>頭獎,一次到齊,直接變小財主</td></tr>
+      <tr><td>三支火箭</td><td>大獎</td></tr>
+      <tr><td>三顆星星</td><td>中獎</td></tr>
+      <tr><td>任兩個圖案相同</td><td>小賺一筆</td></tr>
+      <tr><td>三個骷髏</td><td>當場被雷射光射成灰燼,清掃機器人把你掃走</td></tr>
+      <tr><td>強力電磁鐵吸附機台</td><td>每賭必贏,直到機台過熱爆炸為止</td></tr>
+    </table>
+  </div>
+  <p class="src">出處:1991年《新宇宙傳奇I 完全攻略》,雜誌頁49–55,撰者 Charles Angel;文字內容權利歸原作者與該雜誌所有。</p>
+</section>
+
+<section id="noprotection">
+  <h2>這一作沒有防拷機制</h2>
+  <p>老 Sierra 遊戲常見「翻手冊第幾頁查代碼」這種防拷,我們原本也預設 SQ1 會有,查過一輪之後發現三個獨立線索全部指向同一個結論——沒有。</p>
+
+  <div class="finding">
+    <h4>1987年中文說明書:開機流程沒有查碼這一步</h4>
+    <p>開機章節整段只交代備份磁片與載入遊戲的步驟,沒有出現任何「請查閱手冊第X頁」之類的提示。</p>
+    <div class="quote">鍵入 SIERRA 按 ENTER。</div>
+    <p>就這樣,沒有下一步。</p>
+  </div>
+
+  <div class="finding">
+    <h4>1991年雜誌完全攻略:全篇沒提過查手冊或答題</h4>
+    <p>攻略從開場逃出研究船一路寫到結局,鉅細靡遺,唯獨沒有一句提到「翻到第幾頁」或「輸入密碼驗證身分」這類防拷才會出現的橋段。</p>
+  </div>
+
+  <div class="finding">
+    <h4>遊戲資源掃描:該有的關鍵字沒有,不該有的都是劇情</h4>
+    <p>對遊戲資源做字串比對,<code>manual</code>、<code>password</code>、<code>serial</code> 這幾個防拷程式常用的關鍵字零命中;<code>protect</code> 倒是有幾筆,但打開一看全是劇情台詞,講的是力場防護之類的東西,跟防拷無關。</p>
+  </div>
+
+  <div class="finding">
+    <h4>那組「自爆密碼」不是防拷,是劇情道具</h4>
+    <p>遊戲裡確實有一組密碼,但那是資料卡匣裡讀到的星辰產生器自爆碼,玩家要親手把它輸入面板去引爆裝置,是主線任務的一環,跟「證明你買了正版」完全是兩回事。</p>
+  </div>
+
+  <div class="conclusion">
+    <h4>結論</h4>
+    <p>三方各自獨立查證,結果一致:這一版沒有防拷。因此這裡不做防拷查詢頁——沒有東西可查。</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  《宇宙傳奇I》遊戲本體、美術與音樂版權歸 Sierra On-Line 及其權利繼受人所有,本頁僅為中文化專案附帶的致敬重製。
+  <br>
+  <a href="https://github.com/wicanr2/space-quest1-cht">github.com/wicanr2/space-quest1-cht</a>
+</footer>
+
+</div>
+
+<div class="overlay" id="deathOverlay">
+  <div class="card">
+    <h3>骷髏 · 骷髏 · 骷髏</h3>
+    <p>三個骷髏一起轉出來,雷射光「唰」地一聲把你燒成灰燼,清掃機器人面無表情地把你掃走。</p>
+    <p>不過運氣還算不錯——酒吧後方的灰燼堆裡,好像還留著上一個倒楣鬼掉的太空幣。</p>
+    <button class="act" id="ashBtn" type="button">在灰燼堆裡翻找</button>
+  </div>
+</div>
+
+<div class="overlay" id="explodeOverlay">
+  <div class="card">
+    <h3>機台爆炸了</h3>
+    <p>機台冒煙,燒焦味撲鼻而來——下一秒,吃角子老虎「砰」地一聲炸成兩半。</p>
+    <p>你懷裡塞滿了它爆炸前吐光的太空幣,風光歸風光,這台機器算是徹底報銷了。</p>
+    <button class="act" id="explodeResetBtn" type="button">重新開始</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ---- 8x8 像素圖案(EGA 色感,純程式繪製) ----
+var PAL = {K:'#000000', W:'#ffffff', Y:'#ffe14d', O:'#aa5500', R:'#ff5555', D:'#04060d'};
+
+var ART = {
+  coin: [
+    ".OYYYYO.",
+    "OYYYYYYO",
+    "YYYWWYYY",
+    "YYWYYWYY",
+    "YYWYYWYY",
+    "YYYWWYYY",
+    "OYYYYYYO",
+    ".OYYYYO."
+  ],
+  rocket: [
+    "...WW...",
+    "..WWWW..",
+    "..WRRW..",
+    "..WRRW..",
+    "..WRRW..",
+    ".WWRRWW.",
+    "WW.RR.WW",
+    "..O..O.."
+  ],
+  star: [
+    "...YY...",
+    "...YY...",
+    "YYYYYYYY",
+    ".YYYYYY.",
+    "..YYYY..",
+    ".YY..YY.",
+    "YY....YY",
+    "........"
+  ],
+  skull: [
+    ".WWWWWW.",
+    "WWWWWWWW",
+    "WKKWWKKW",
+    "WKKWWKKW",
+    "WWWWWWWW",
+    "WWWKKWWW",
+    ".WKKKKW.",
+    "..W..W.."
+  ]
+};
+
+var NAME = {coin:"太空幣", rocket:"火箭", star:"星星", skull:"骷髏"};
+
+function drawSymbol(canvas, key){
+  var ctx = canvas.getContext("2d");
+  var w = canvas.width, h = canvas.height;
+  ctx.fillStyle = PAL.D;
+  ctx.fillRect(0,0,w,h);
+  var art = ART[key];
+  var cell = w/8;
+  for(var r=0;r<8;r++){
+    var row = art[r];
+    for(var c=0;c<8;c++){
+      var ch = row[c];
+      if(ch === "." ) continue;
+      ctx.fillStyle = PAL[ch] || "#ff00ff";
+      ctx.fillRect(Math.round(c*cell), Math.round(r*cell), Math.ceil(cell), Math.ceil(cell));
+    }
+  }
+}
+
+// ---- 遊戲狀態 ----
+var SYM_KEYS = ["coin","rocket","star","skull"];
+var WEIGHT   = {coin:2, rocket:4, star:6, skull:3};
+var TOTAL_W  = 0;
+SYM_KEYS.forEach(function(k){ TOTAL_W += WEIGHT[k]; });
+
+var PAYOUT = {coin:40, rocket:15, star:8}; // 三連中獎倍數
+var PAIR_MULT = 2;
+
+var state = {
+  balance: 100,
+  bet: 10,
+  magnet: false,
+  heat: 0,
+  threshold: null,
+  locked: false,
+  spinning: false
+};
+
+var els = {
+  reels: [document.getElementById("reel0"), document.getElementById("reel1"), document.getElementById("reel2")],
+  readout: document.getElementById("readout"),
+  betVal: document.getElementById("betVal"),
+  betUp: document.getElementById("betUp"),
+  betDown: document.getElementById("betDown"),
+  balanceVal: document.getElementById("balanceVal"),
+  spinBtn: document.getElementById("spinBtn"),
+  resetBtn: document.getElementById("resetBtn"),
+  magnetToggle: document.getElementById("magnetToggle"),
+  heatWrap: document.getElementById("heatWrap"),
+  heatFill: document.getElementById("heatFill"),
+  logList: document.getElementById("logList"),
+  deathOverlay: document.getElementById("deathOverlay"),
+  ashBtn: document.getElementById("ashBtn"),
+  explodeOverlay: document.getElementById("explodeOverlay"),
+  explodeResetBtn: document.getElementById("explodeResetBtn")
+};
+
+function pickSymbol(){
+  var n = Math.random() * TOTAL_W;
+  for(var i=0;i<SYM_KEYS.length;i++){
+    var k = SYM_KEYS[i];
+    if(n < WEIGHT[k]) return k;
+    n -= WEIGHT[k];
+  }
+  return SYM_KEYS[SYM_KEYS.length-1];
+}
+
+function addLog(text, cls){
+  var line = document.createElement("div");
+  line.className = "log-line" + (cls ? " " + cls : "");
+  line.textContent = text;
+  els.logList.insertBefore(line, els.logList.firstChild);
+  while(els.logList.children.length > 12){
+    els.logList.removeChild(els.logList.lastChild);
+  }
+}
+
+function renderStatic(){
+  els.betVal.textContent = state.bet;
+  els.balanceVal.textContent = state.balance;
+  var canSpin = !state.locked && !state.spinning && state.balance >= state.bet && state.bet >= 5;
+  els.spinBtn.disabled = !canSpin;
+  els.betDown.disabled = state.locked || state.spinning || state.bet <= 5;
+  els.betUp.disabled = state.locked || state.spinning || (state.bet + 5) > state.balance;
+  els.magnetToggle.disabled = state.locked || state.spinning;
+  if(state.magnet){
+    els.heatWrap.style.display = "block";
+    var pct = Math.min(100, (state.heat / 6) * 100);
+    els.heatFill.style.width = pct + "%";
+  } else {
+    els.heatWrap.style.display = "none";
+  }
+}
+
+function initReels(){
+  SYM_KEYS.forEach(function(){});
+  els.reels.forEach(function(canvas){ drawSymbol(canvas, "star"); });
+}
+
+function setReadout(text, cls){
+  els.readout.className = "readout" + (cls ? " " + cls : "");
+  els.readout.textContent = text;
+}
+
+function spinReelAnim(canvas, duration, finalKey, done){
+  var start = Date.now();
+  var iv = setInterval(function(){
+    var elapsed = Date.now() - start;
+    if(elapsed >= duration){
+      clearInterval(iv);
+      canvas.classList.remove("shake");
+      drawSymbol(canvas, finalKey);
+      if(done) done();
+      return;
+    }
+    drawSymbol(canvas, SYM_KEYS[Math.floor(Math.random()*SYM_KEYS.length)]);
+  }, 65);
+  canvas.classList.add("shake");
+}
+
+function doSpin(){
+  if(state.locked || state.spinning) return;
+  if(state.balance < state.bet || state.bet < 5) return;
+
+  state.spinning = true;
+  renderStatic();
+  setReadout("轉動中……");
+
+  var result;
+  if(state.magnet){
+    result = ["coin","coin","coin"];
+  } else {
+    result = [pickSymbol(), pickSymbol(), pickSymbol()];
+  }
+
+  var durations = [650, 900, 1200];
+  var doneCount = 0;
+  els.reels.forEach(function(canvas, i){
+    spinReelAnim(canvas, durations[i], result[i], function(){
+      doneCount++;
+      if(doneCount === 3) resolveSpin(result);
+    });
+  });
+}
+
+function resolveSpin(result){
+  var bet = state.bet;
+  state.balance -= bet;
+
+  var allSame = result[0] === result[1] && result[1] === result[2];
+  var anyPair = !allSame && (result[0]===result[1] || result[1]===result[2] || result[0]===result[2]);
+
+  if(allSame && result[0] === "skull"){
+    // 三骷髏:死亡事件
+    state.spinning = false;
+    renderStatic();
+    setReadout("三個骷髏……", "lose");
+    addLog("下注 " + bet + " → " + result.map(function(k){return NAME[k];}).join("／") + " → 當場出局", "lose");
+    showDeathOverlay();
+    return;
+  }
+
+  var totalReturn = 0;
+  var label = "沒中,槓龜";
+  var cls = "lose";
+
+  if(allSame && PAYOUT[result[0]] !== undefined){
+    totalReturn = bet * PAYOUT[result[0]];
+    if(result[0] === "coin"){
+      label = "三個太空幣,頭獎!";
+      cls = "big";
+    } else if(result[0] === "rocket"){
+      label = "三支火箭,大獎!";
+      cls = "big";
+    } else {
+      label = "三顆星星,中獎!";
+      cls = "win";
+    }
+  } else if(anyPair){
+    totalReturn = bet * PAIR_MULT;
+    label = "兩個湊對,小賺一筆";
+    cls = "win";
+  }
+
+  state.balance += totalReturn;
+
+  var resultText = result.map(function(k){return NAME[k];}).join("／");
+  addLog("下注 " + bet + " → " + resultText + " → " + label + "(餘額 " + state.balance + ")", cls);
+  setReadout(resultText + " — " + label, cls);
+
+  if(state.magnet){
+    state.heat += 1;
+    if(state.threshold === null){
+      state.threshold = 3 + Math.floor(Math.random()*4); // 3~6
+    }
+    if(state.heat >= state.threshold){
+      state.spinning = false;
+      renderStatic();
+      showExplodeOverlay();
+      return;
+    }
+  }
+
+  state.spinning = false;
+  clampBet();
+  renderStatic();
+}
+
+function clampBet(){
+  if(state.bet > state.balance){
+    state.bet = Math.max(5, Math.floor(state.balance/5)*5);
+    if(state.bet < 5) state.bet = 5;
+  }
+}
+
+function showDeathOverlay(){
+  state.locked = true;
+  els.deathOverlay.classList.add("show");
+}
+
+function showExplodeOverlay(){
+  state.locked = true;
+  els.explodeOverlay.classList.add("show");
+}
+
+function resetGame(){
+  state.balance = 100;
+  state.bet = 10;
+  state.magnet = false;
+  state.heat = 0;
+  state.threshold = null;
+  state.locked = false;
+  state.spinning = false;
+  els.magnetToggle.checked = false;
+  els.logList.innerHTML = "";
+  setReadout("投下太空幣,拉一下霸吧。");
+  initReels();
+  renderStatic();
+}
+
+// ---- 事件綁定 ----
+els.betUp.addEventListener("click", function(){
+  if(state.bet + 5 <= state.balance){ state.bet += 5; renderStatic(); }
+});
+els.betDown.addEventListener("click", function(){
+  if(state.bet - 5 >= 5){ state.bet -= 5; renderStatic(); }
+});
+els.spinBtn.addEventListener("click", doSpin);
+els.resetBtn.addEventListener("click", resetGame);
+
+els.magnetToggle.addEventListener("change", function(){
+  if(state.locked || state.spinning){ els.magnetToggle.checked = state.magnet; return; }
+  state.magnet = els.magnetToggle.checked;
+  if(!state.magnet){
+    // 及時把磁鐵拿開,溫度歸零
+    state.heat = 0;
+    state.threshold = null;
+  }
+  renderStatic();
+});
+
+els.ashBtn.addEventListener("click", function(){
+  els.deathOverlay.classList.remove("show");
+  state.locked = false;
+  state.balance += 15;
+  addLog("在灰燼堆裡撿到 15 枚太空幣(餘額 " + state.balance + ")", "win");
+  clampBet();
+  renderStatic();
+  setReadout("撿回一命,繼續賭。");
+});
+
+els.explodeResetBtn.addEventListener("click", function(){
+  els.explodeOverlay.classList.remove("show");
+  resetGame();
+});
+
+// ---- 初始化 ----
+initReels();
+renderStatic();
+
+})();
+</script>
+</body>
+</html>

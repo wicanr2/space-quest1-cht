@@ -1,0 +1,14 @@
+# [HARD] 遊戲資源、掃描原圖、MT-32 ROM 一律不進 repo
+game/
+*.ROM
+*.rom
+dist-all/
+build/
+*.zip
+*.rar
+*.AppImage
+*.tar.gz
+# 倚天字型原始檔有版權，只散布從譯文烘出來的字集
+tools/assets/eten/
+# 掃描原圖（README 只放縮圖）
+manual_src/

@@ -1,0 +1,110 @@
+This allows you to do something to an item.	這樣可以對物品做些什麼。
+This allows you to select an item.	這樣可以選取一個物品。
+Cartridge	資料匣
+It's a cartridge from the Arcada's Data Archive.	這是阿寇達號資料庫裡的一個資料匣。
+This keycard fits an electronic lock someplace on the Arcada.	這張磁卡可以打開阿寇達號上某處的電子鎖。
+Gadget	小裝置
+This is some sort of gadget. You're not sure what it does exactly, but it has a switch.	這是某種小裝置，你也不確定它到底是做什麼用的，不過上面有個開關。
+It's the cone shaped tip of a stalagmite.	這是石筍的錐狀尖端。
+Survival Kit	求生包
+A Survival Kit	一個求生包
+Knife	氙星軍刀
+It's a Xenon Army knife	這是一把氙星軍刀。
+Dehydrated Water	濃縮水
+The can label says "Pelvitron Dehydrated Water (H2) - All you add is air! Makes 10 gallons! Caution - Do not attempt to open or rupture container! Misuse could result in personal injury and/or flash flooding."	罐子上寫著：「佩爾維創牌濃縮水 (H2)——只要加空氣就好！可以做出十加侖！注意——請勿嘗試打開或弄破容器！誤用可能導致人身傷害及／或瞬間洪水氾濫。」
+Broken Glass	玻璃碎片
+It's that highly reflective piece of broken cockpit glass.	這是駕駛艙那塊反光度超高的玻璃碎片。
+Orat Part	歐拉特部位
+This cute little item is an Orat part - you're not sure what part though.	這個可愛的小東西是歐拉特身上的一部分——不確定是哪個部位就是了。
+Skimmer Key	沙漠飛車鑰匙
+This key operates the skimmer.	這把鑰匙可以發動沙漠飛車。
+Keronian Ale	柯羅娜麥酒
+Ummm! Keronian Ale!	嗯嗯，柯羅娜麥酒！
+Jetpack	噴射背包
+This is a used jetpack. Real used.	這是個用過的噴射背包。是真的用過頭了。
+Pulseray Laser Pistol	脈衝雷射槍
+It's a pulseray laser pistol. Remember, this isn't a play toy!	這是一把脈衝雷射槍。記住，這可不是玩具！
+Grenade	瓦斯手榴彈
+You have a small innocuous looking grenade.	你有一顆看起來人畜無害的瓦斯手榴彈。
+Remote	力場遙控器
+This is a small single function remote control.	這是一個功能單一的小型遙控器。
+Widget	強力磁鐵
+It's a genuine Widget. You're not sure what it does but it's heavy, it looks cool, and it might be magnetic. Please keep this away from the game disks!	這是貨真價實的強力磁鐵。你不確定它是做什麼用的，只知道它很重、看起來很酷，而且可能有磁性。拜託離遊戲磁片遠一點！
+Plant	植物
+This is simply a piece of sticky, stinking, rotting, plant	這只是一小塊黏黏的、臭臭的、爛掉的植物
+Bar Coupon	酒吧折價券
+Hey kids! This bar coupon is good for 5 bucakzoids and a free Keronian Ale!	嘿，各位！這張酒吧折價券可以折抵5枚太空幣，還能換一杯免費的柯羅娜麥酒！
+Droids-B-Us coupon	機器人反斗城折價券
+This coupon gives you a 20% discount at a Droids-B-Us near you! How helpful! Those suckers have the highest droid prices in this universe.	這張折價券可以在你附近的機器人反斗城折抵兩成！超佛心的吧！那群傢伙的機器人價格可是全宇宙最貴的。
+Sarien ID Card	沙利安人識別卡
+In the pocket of this ugly outfit is a Sarien ID card. The name on the card is Butston Freem. You wonder if this is a common Sarien name (and if it is, you're glad you're not Sarien).	這件醜到爆的制服口袋裡，有一張沙利安人識別卡。卡上寫的名字是巴斯頓·弗利姆。你很好奇這是不是沙利安人的菜市場名（如果是的話，你還真慶幸自己不是沙利安人）。
+Restore	讀取
+Restart	重新開始
+    Quit    	    離開 
+  Space Quest I - The Sarien Encounter	  宇宙傳奇I：沙利安人的遭遇
+Enter drive & directory for new response log...	Enter drive & directory for new response log...
+newresp.log	newresp.log
+Default Response	Default Response
+doVerb message:	doVerb message:
+This icon is for walking.	這個圖示是用來走路的。
+This icon is for looking.	這個圖示是用來查看的。
+This icon is for doing.	這個圖示是用來做動作的。
+This icon is for talking.	這個圖示是用來說話的。
+This window displays the current inventory item.	這個視窗顯示目前的道具欄物品。
+This icon brings up the inventory window.	這個圖示會叫出道具欄視窗。
+This icon is for smelling.	這個圖示是用來聞味道的。
+This icon is for tasting.	這個圖示是用來嚐味道的。
+This icon brings up the control panel.	這個圖示會叫出控制面板。
+This icon tells you about other icons.	這個圖示會告訴你其他圖示的用途。
+Raises and lowers the level of graphics detail.	調整畫面細節的高低。
+Adjusts sound volume.	調整音量大小。
+Adjusts the speed of the your character's animation (within the limits of your computer's capability).	調整角色動畫的播放速度（在你電腦效能許可的範圍內）。
+Saves your current game.	儲存你目前的進度。
+Restores a previously saved game.	讀取之前存的進度。
+Restarts the Game.	重新開始遊戲。
+Exits the game.	離開遊戲。
+Information about the game.	關於本遊戲的資訊。
+Exits this menu.	離開這個選單。
+Skip it	跳過
+Watch it	看下去
+Restore a Game	讀取遊戲進度
+Thank you for playing Space Quest I. As usual, you've been most entertaining.	感謝你玩了這一輪《宇宙傳奇I》。一如既往，你這趟真的很有笑點。
+Space Quest 1 Theme Based on the\nOriginal Composition by Mark Crowe 	宇宙傳奇1 主題曲，改編自\nMark Crowe 的原創作品 
+"The Star Generator is in danger! The Arcada is under attack! You'd better get off this scow if you value your life, Wilco."	「星辰產生器有危險了！阿寇達號正遭受攻擊！威爾科，你要是還想活命，最好快滾出這艘破船。」
+Black Holes	黑洞
+Stars	恆星
+Magnetic Fields	磁場
+Van Allen Belts	范艾倫輻射帶
+Astral Bodies	星體
+Quasars	類星體
+Binary Systems	聯星系統
+Orbits	軌道
+Galaxies	星系
+Solar Flares	太陽閃焰
+Moons	衛星
+Plantary Formations	行星結構
+Constellations	星座
+Quadrants	象限
+Asteroids	小行星
+Pulsars	脈衝星
+Gravity	重力
+Meteors	流星
+Solar Systems	太陽系
+Warp Fields	曲速力場
+The old scientist doesn't appear healthy. In fact, his small intestine is about to unwind onto the floor.	這位老科學家看起來不太妙。事實上，他的小腸正準備滑到地板上。
+electric door	電動門
+This is a door. Perhaps it leads elsewhere.	這是一扇門。或許通往別的地方。
+It's an automatic door.	這是一扇自動門。
+These panel lights are here just for decoration and don't actually have anything to do with the Data Archive Unit.	這些面板燈只是裝飾用的，跟資料庫主機一點關係都沒有。
+These lights have something to do with the Data Archive Unit, though you don't really know what. They do seem to indicate that the unit is still operational.	這些燈跟資料庫主機有點關係，不過你也搞不清楚是什麼關係。看起來像是在顯示主機還在運作。
+data retrieval droid	資料擷取機器人
+data retrieval droid lookStr	data retrieval droid lookStr
+holding a cartridge	手裡拿著一個資料匣
+Data retreval console	資料擷取主控台
+This is the operation console of the Data Archive Unit. There is a CRT and chair.	這是資料庫主機的操作主控台，上面有一台顯示器和一張椅子。
+Computer	電腦
+data cartridges	資料匣
+The data cartridges are stored in these secure storage modules.	這些資料匣被存放在這些安全儲存模組裡。
+main computer	主電腦
+This is where the sophisticated electronics for the complete Data Archive System are housed.	這裡存放著整套資料庫系統的精密電子設備。
+These things hanging from the ceiling, which look like blowfish-on-a-rope, are actually lighting fixtures for the operation console.	天花板上垂掛的這些東西，看起來像用繩子吊著的河豚，其實是操作主控台的照明燈具。

@@ -1,0 +1,110 @@
+restart.game	restart.game
+show.obj	show.obj
+random	random
+program.control	program.control
+player.control	player.control
+obj.status.v	obj.status.v
+quit	quit
+show.mem	show.mem
+pause	pause
+echo.line	echo.line
+cancel.line	cancel.line
+init.joy	init.joy
+toggle.monitor	toggle.monitor
+version	version
+script.size	script.size
+set.game.id	set.game.id
+log	log
+set.scan.start	set.scan.start
+reset.scan.start	reset.scan.start
+reposition.to	reposition.to
+reposition.to.v	reposition.to.v
+trace.on	trace.on
+trace.info	trace.info
+print.at	print.at
+print.at.v	print.at.v
+discard.view.v	discard.view.v
+clear.text.rect	clear.text.rect
+set.upper.left	set.upper.left
+set.menu	set.menu
+set.menu.item	set.menu.item
+submit.menu	submit.menu
+enable.item	enable.item
+disable.item	disable.item
+menu.input	menu.input
+show.obj.v	show.obj.v
+open.dialogue	open.dialogue
+close.dialogue	close.dialogue
+mul.n	mul.n
+mul.v	mul.v
+div.n	div.n
+div.v	div.v
+close.window	close.window
+equaln	equaln
+equalv	equalv
+lessn	lessn
+lessv	lessv
+greatern	greatern
+greaterv	greaterv
+isset	isset
+isset.v	isset.v
+has	has
+obj.in.room	obj.in.room
+posn	posn
+controller	controller
+have.key	have.key
+said	said
+compare.strings	compare.strings
+obj.in.box	obj.in.box
+center.posn	center.posn
+right.posn	right.posn
+Everything down here is composed of very hard rock. Everything has a slimey look and feel due to the humidity.	這一帶全是硬梆梆的岩石，濕氣重到摸起來又滑又黏。
+Nothing can be climbed here. Things are either too slimey or too steep.	這裡沒東西能爬，不是太滑就是太陡了。
+discard.view(%v18):%m30	discard.view(%v18):%m30
+set.view(%v18,_):%m26	set.view(%v18,_):%m26
+set.view(_,%v18):%m30	set.view(_,%v18):%m30
+set.loop(%v18,_):%m26	set.loop(%v18,_):%m26
+set.loop(%v18,_):\nBad loop #.%m25	set.loop(%v18,_):\nBad loop #.%m25
+set.loop(%v18,_):%m31	set.loop(%v18,_):%m31
+set.cel(%v18,_):%m26	set.cel(%v18,_):%m26
+set.cel(%v18,_):\nBad cel #.%m25	set.cel(%v18,_):\nBad cel #.%m25
+sound(%v18):\nSound not loaded.%m25	sound(%v18):\nSound not loaded.%m25
+set.cel(%v18,_):%m31	set.cel(%v18,_):%m31
+Script buffer overflow.\nMaximum size = %v18%m25	Script buffer overflow.\nMaximum size = %v18%m25
+erase(%v18):%m26	erase(%v18):%m26
+animate.obj(%v18):%m26	animate.obj(%v18):%m26
+stop.update(%v18):%m28	stop.update(%v18):%m28
+Bad test: %v18%m25	Bad test: %v18%m25
+Bad action: %v18%m25	Bad action: %v18%m25
+start.update(%v18):%m28	start.update(%v18):%m28
+draw.pic(%v18):%m32	draw.pic(%v18):%m32
+draw(%v18):%m26	draw(%v18):%m26
+draw(%v18):%m31	draw(%v18):%m31
+discard.pic(%v18):%m32	discard.pic(%v18):%m32
+get(%v18) or put(%v18):%m26	get(%v18) or put(%v18):%m26
+\nPress ESC to quit.	\nPress ESC to quit.
+\nBad object number	\nBad object number
+%m27 or object not drawn.%m25	%m27 or object not drawn.%m25
+\nView not 	\nView not 
+%m29loaded.%m25	%m29loaded.%m25
+%m29set.%m25	%m29set.%m25
+Picture not loaded.%m25	Picture not loaded.%m25
+new room: 	new room: 
+object number: 	object number: 
+var number: 	var number: 
+var value: 	var value: 
+object #: 	object #: 
+var %v161: %v162	var %v161: %v162
+flag number: 	flag number: 
+flag %v161 is set	flag %v161 is set
+flag %v161 is not set	flag %v161 is not set
+No response to input.	No response to input.
+You Have $%v124. Enter New Total-> 	You Have $%v124. Enter New Total-> 
+Cheater!	Cheater!
+already in jetpack	already in jetpack
+trace on	trace on
+You are dead! You can only restore, restart, or quit the game.	你死了！現在只能讀取存檔、重新開始，或離開遊戲。
+Well, %s1, that was a smooth half-gainer into the elevator shaft.  Did you decide that you would think more clearly with your brains re-organized?	哎呀，%s1，你這一跳漂亮地翻進了電梯井裡。是覺得把腦袋重新洗牌一下，會讓你想得更清楚嗎？
+That concludes your experiment involving the effects of total vacuum on the human body, %s1.	好啦，%s1，你這下總算親身做完「人體暴露在真空中會怎樣」這個實驗了。
+As you lie on the floor in a smoldering, carbogelatinous heap you can't help but wonder why you bothered getting up this morning.	你倒在地上，變成一堆還冒著煙的焦黑軟泥，忍不住在想，今天早上到底幹嘛還爬起床。
+You are now lying on the floor in many pieces.  Guess those beams meant business, %s1.	你現在躺在地上，被拆成好幾塊了。看來那些雷射光束不是鬧著玩的，%s1。

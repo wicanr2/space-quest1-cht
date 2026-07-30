@@ -1,0 +1,1302 @@
+diff --git a/engines/sci/engine/kstring.cpp b/engines/sci/engine/kstring.cpp
+index fe35fd19..5648e15f 100644
+--- a/engines/sci/engine/kstring.cpp
++++ b/engines/sci/engine/kstring.cpp
+@@ -207,6 +207,58 @@ reg_t kReadNumber(EngineState *s, int argc, reg_t *argv) {
+ }
+ 
+ 
++// CHT: return the ordered sequence of printf-style conversion chars (s/d/c/x/u...)
++// in a format template, ignoring width/flag digits. Two templates with identical
++// sequences consume kFormat arguments in the same order/type.
++static Common::String sciChtFormatSpecs(const char *p) {
++	Common::String out;
++	while (*p) {
++		if (*p == '%') {
++			++p;
++			if (*p == '%') { ++p; continue; } // literal %%
++			while (*p && (Common::isDigit(*p) || *p == '-' || *p == '=')) ++p;
++			if (*p) { out += *p; ++p; }
++		} else {
++			++p;
++		}
++	}
++	return out;
++}
++
++// CHT: map a translated template's specifiers onto the original's. Succeeds when the
++// translation's specifier sequence is an in-order subsequence of the source's -- this
++// lets a translation drop source-only markers (e.g. English plural "%s" that Chinese
++// grammar omits) while still consuming the RIGHT arguments. On success returns the
++// number of translated specifiers and fills argMap[j] with the source-specifier index
++// (= source argument index) that the j-th translated specifier must consume, so kFormat
++// can compact the argument list and skip the dropped ones.
++//
++// SAFETY: kFormat reads %d/%c/%x/%u from the (remappable) `arguments[]` array but reads
++// %s directly from `argv[startarg + paramindex]`, which our remap can't reach. So a
++// dropped/shifted %s in the translation would desync. We therefore only accept a
++// NON-identity subsequence when the translation contains no %s at all (then every kept
++// specifier goes through `arguments[]` and the remap is exact). An identical specifier
++// sequence is always safe (the remap is a no-op and paramindex stays aligned). Returns
++// -1 (keep original English template) otherwise, or if there are more than maxMap specs.
++static int sciChtMapFormatSpecs(const char *src, const char *cht, int *argMap, int maxMap) {
++	Common::String s = sciChtFormatSpecs(src);
++	Common::String c = sciChtFormatSpecs(cht);
++	if ((int)c.size() > maxMap)
++		return -1;
++	uint si = 0;
++	for (uint ci = 0; ci < c.size(); ++ci) {
++		while (si < s.size() && s[si] != c[ci])
++			++si;
++		if (si >= s.size())
++			return -1;
++		argMap[ci] = (int)si;
++		++si;
++	}
++	if (s != c && c.contains('s'))
++		return -1; // dropped-spec remap with a surviving %s is unsafe (argv-direct read)
++	return (int)c.size();
++}
++
+ /*  Format(targ_address, textresnr, index_inside_res, ...)
+ ** or
+ **  Format(targ_address, heap_text_addr, ...)
+@@ -249,6 +301,20 @@ reg_t kFormat(EngineState *s, int argc, reg_t *argv) {
+ 
+ 	int index = (startarg == 3) ? argv[2].toUint16() : 0;
+ 	Common::String source_str = g_sci->getKernel()->lookupText(position, index);
++	// CHT: translate the format TEMPLATE (with literal %s/%d) before substitution, so
++	// player names/numbers land inside the Chinese template. The GfxText16 content-match
++	// hook cannot catch these -- it only sees the post-substitution string. The Chinese
++	// template may legitimately use fewer specifiers than the English one (dropping
++	// English-only plural markers), so we compute a subsequence arg-mapping and remap the
++	// argument list below; a template whose specifiers don't map falls back to English.
++	int chtArgMap[16];
++	int chtArgCount = -1;
++	const char *chtTemplate = g_sci->getChtTranslation(source_str.c_str());
++	if (chtTemplate) {
++		chtArgCount = sciChtMapFormatSpecs(source_str.c_str(), chtTemplate, chtArgMap, 16);
++		if (chtArgCount >= 0)
++			source_str = chtTemplate;
++	}
+ 	const char* source = source_str.c_str();
+ 
+ 	debugC(kDebugLevelStrings, "Formatting \"%s\"", source);
+@@ -260,6 +326,18 @@ reg_t kFormat(EngineState *s, int argc, reg_t *argv) {
+ 	for (i = startarg; i < argc; i++)
+ 		arguments[i-startarg] = argv[i].toUint16(); /* Parameters are copied to prevent overwriting */
+ 
++	// CHT: when a translated template was swapped in above, reorder the arguments so its
++	// (possibly fewer) specifiers pull the correct source arguments, skipping any the
++	// translation dropped. chtArgMap[j] is the source argument index for the j-th kept
++	// specifier; consumption below is positional so we compact them to the front.
++	if (chtArgCount >= 0) {
++		uint16 remapped[16];
++		for (int j = 0; j < chtArgCount; j++)
++			remapped[j] = arguments[chtArgMap[j]];
++		for (int j = 0; j < chtArgCount; j++)
++			arguments[j] = remapped[j];
++	}
++
+ 	while ((xfer = *source++)) {
+ 		if (xfer == '%') {
+ 			if (mode == 1) {
+@@ -311,6 +389,16 @@ reg_t kFormat(EngineState *s, int argc, reg_t *argv) {
+ 
+ 				Common::String tempsource = g_sci->getKernel()->lookupText(reg,
+ 				                                  arguments[paramindex + 1]);
++				// CHT: the template was translated above, but the string substituted into
++				// its %s is still English (e.g. "Display mode: %s" with %s = "Both").
++				// Translate the argument too, but ONLY when the template itself was
++				// translated -- that keeps the risk inside strings we already know about
++				// and leaves player-entered names alone. Unknown arguments pass through.
++				if (chtArgCount >= 0) {
++					const char *argTr = g_sci->getChtTranslation(tempsource.c_str());
++					if (argTr)
++						tempsource = argTr;
++				}
+ 				int slen = tempsource.size();
+ 				int extralen = strLength - slen;
+ 				assert((target - targetbuf) + extralen <= maxsize);
+diff --git a/engines/sci/event.cpp b/engines/sci/event.cpp
+index 145d32f1..65a2c85c 100644
+--- a/engines/sci/event.cpp
++++ b/engines/sci/event.cpp
+@@ -251,6 +251,14 @@ SciEvent EventManager::getScummVMEvent() {
+ 		return input;
+ 	}
+ 
++	// 繁體中文化：F8 = 中/英文對照切換。攔截後不傳給遊戲腳本；切換於下一則文字繪製時生效
++	// （SCI 文字框的繪製與 transient port 狀態緊耦合，就地重繪風險高，故採「下一則生效」語意）。
++	if (g_sci->getLanguage() == Common::ZH_TWN && ev.type == Common::EVENT_KEYDOWN &&
++		ev.kbd.keycode == Common::KEYCODE_F8) {
++		g_sci->toggleChtLang();
++		return noEvent;
++	}
++
+ 	int scummVMKeyFlags;
+ 
+ 	switch (ev.type) {
+diff --git a/engines/sci/graphics/cache.cpp b/engines/sci/graphics/cache.cpp
+index fda7797e..b012b331 100644
+--- a/engines/sci/graphics/cache.cpp
++++ b/engines/sci/graphics/cache.cpp
+@@ -30,6 +30,7 @@
+ #include "sci/graphics/scifont.h"
+ #include "sci/graphics/fontsjis.h"
+ #include "sci/graphics/fontkorean.h"
++#include "sci/graphics/fontchinese.h"
+ #include "sci/graphics/view.h"
+ 
+ namespace Sci {
+@@ -72,6 +73,10 @@ GfxFont *GfxCache::getFont(GuiResourceId fontId) {
+ 		// Create special SJIS font in japanese games, when font 900 is selected
+ 		else if ((fontId == 900) && (g_sci->getLanguage() == Common::JA_JPN))
+ 			_cachedFonts[fontId] = new GfxFontSjis(_screen, fontId);
++		// Traditional Chinese (Big5) fan translation: wrap every font so ASCII
++		// stays on the original SCI glyphs and Big5 double-byte renders via Big5Font.
++		else if (g_sci->getLanguage() == Common::ZH_TWN)
++			_cachedFonts[fontId] = new GfxFontChinese(_resMan, _screen, fontId);
+ 		else
+ 			_cachedFonts[fontId] = new GfxFontFromResource(_resMan, _screen, fontId);
+ 	}
+diff --git a/engines/sci/graphics/fontchinese.cpp b/engines/sci/graphics/fontchinese.cpp
+new file mode 100644
+index 00000000..65b9ced2
+--- /dev/null
++++ b/engines/sci/graphics/fontchinese.cpp
+@@ -0,0 +1,259 @@
++/* ScummVM - Graphic Adventure Engine
++ *
++ * ScummVM is the legal property of its developers, whose names
++ * are too numerous to list here. Please refer to the COPYRIGHT
++ * file distributed with this source distribution.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include "common/file.h"
++#include "graphics/big5.h"
++
++#include "sci/sci.h"
++#include "sci/graphics/screen.h"
++#include "sci/graphics/fontchinese.h"
++
++namespace Sci {
++
++// Big5 font data file shipped alongside the game (part of the CHT patch).
++static const char *kChineseFontFile = "sq1_big5.fnt";
++// Advance width used when laying the glyph out on screen. NOTE this is deliberately
++// narrower than the glyph bitmap itself -- it is a layout metric, NOT a buffer stride.
++static const int kBig5Width = 12;
++
++// Upper bound of what Big5Font::drawBig5Char() may write into a scratch buffer.
++// Any buffer handed to it must be sized by these, never by kBig5Width: the low-res
++// status-bar path passes kChineseTraditionalWidth (16) as the destination pitch, so a
++// kBig5Width-sized buffer is 48 bytes short and drawBig5Char writes straight through
++// the stack canary. That is what crashed the macOS build (issue #1): arm64 builds ship
++// with -fstack-protector-strong, so it aborted at the first status-bar draw; on Linux
++// the same overflow ran silently. Upstream's kChineseTraditionalMaxHeight is private,
++// hence the local copy.
++static const int kBig5GlyphMaxW = Graphics::Big5Font::kChineseTraditionalWidth;  // 16
++static const int kBig5GlyphMaxH = 16;
++
++// Hi-res Big5 font (own format, bake_hires_font.py): 32px-wide, kHiH-row glyphs drawn
++// straight onto the 640x400 display buffer for sharp strokes under ZH_TWN upscaling.
++static const char *kChineseHiResFontFile = "sq1_big5_hi.fnt";
++static const int kHiW = 24;
++static const int kHiH = 24;
++
++GfxFontChinese::GfxFontChinese(ResourceManager *resMan, GfxScreen *screen, GuiResourceId resourceId)
++	: _screen(screen), _resourceId(resourceId), _big5(nullptr), _big5Height(15) {
++	// Original SCI font for single-byte (ASCII / control) glyphs.
++	_asciiFont = new GfxFontFromResource(resMan, screen, resourceId);
++
++	Common::File fontFile;
++	if (fontFile.open(kChineseFontFile)) {
++		_big5 = new Graphics::Big5Font();
++		_big5->loadPrefixedRaw(fontFile, _big5Height);
++		// Clamp: the glyph scratch buffers below are sized for kBig5GlyphMaxH rows, and
++		// a font file claiming more would overflow them.
++		_big5Height = MIN<int>(_big5->getFontHeight(), kBig5GlyphMaxH);
++	} else {
++		warning("GfxFontChinese: could not open '%s'; Chinese glyphs will be blank", kChineseFontFile);
++	}
++
++	_hiW = kHiW;
++	_hiH = kHiH;
++	loadHiResFont();
++}
++
++// Load the hi-res Big5 font: repeated { big-endian Big5 code (uint16), _hiH*(_hiW/8) glyph
++// bytes }, terminated by 0xFFFF. Keeps a code->offset index into the flat _hiData blob.
++// Missing file just means we fall back to the low-res Big5 path (no hi-res sharpening).
++bool GfxFontChinese::loadHiResFont() {
++	Common::File f;
++	if (!f.open(kChineseHiResFontFile))
++		return false;
++	const uint bytesPerGlyph = _hiH * ((_hiW + 7) / 8);
++	while (!f.eos()) {
++		uint16 code = f.readUint16BE();
++		if (f.eos() || code == 0xFFFF)
++			break;
++		uint32 offset = _hiData.size();
++		_hiData.resize(offset + bytesPerGlyph);
++		if (f.read(&_hiData[offset], bytesPerGlyph) != bytesPerGlyph)
++			break;
++		_hiIndex[code] = offset;
++	}
++	return !_hiIndex.empty();
++}
++
++GfxFontChinese::~GfxFontChinese() {
++	delete _big5;
++	delete _asciiFont;
++}
++
++GuiResourceId GfxFontChinese::getResourceId() {
++	return _resourceId;
++}
++
++byte GfxFontChinese::getHeight() {
++	byte asciiHeight = _asciiFont->getHeight();
++	return MAX<byte>(asciiHeight, (byte)_big5Height);
++}
++
++// text16 tests this on the first (lead) byte before combining the pair.
++bool GfxFontChinese::isDoubleByte(uint16 chr) {
++	return (chr >= 0x81) && (chr <= 0xFE);
++}
++
++byte GfxFontChinese::getCharWidth(uint16 chr) {
++	// chr may arrive either as a bare lead byte (during width scans) or as a
++	// combined lead|(trail<<8) value (during drawing). Both mean a Big5 char.
++	if (chr > 0xFF || isDoubleByte(chr))
++		return kBig5Width;
++	return _asciiFont->getCharWidth(chr);
++}
++
++byte GfxFontChinese::getCharHeight(uint16 chr) {
++	if (chr > 0xFF || isDoubleByte(chr))
++		return (byte)_big5Height;
++	return _asciiFont->getHeight();
++}
++
++void GfxFontChinese::draw(uint16 chr, int16 top, int16 left, byte color, bool greyedOutput) {
++	// Single-byte: delegate to the original SCI font (keeps ASCII pixel-identical).
++	if (chr <= 0xFF) {
++		_asciiFont->draw(chr, top, left, color, greyedOutput);
++		return;
++	}
++
++	// Double-byte: chr == lead | (trail << 8); Big5Font wants (lead << 8) | trail.
++	uint16 point = ((chr & 0xFF) << 8) | (chr >> 8);
++
++	const bool upscaled = _screen->getDisplayWidth() > _screen->getWidth();
++
++	// Compact path: some boxes have their height hard-coded by the game (status bar,
++	// pause-panel readout). See GfxScreen::setCompactTextActive. That bar is only 10 script rows (20 display rows) tall, so a 24px
++	// hi-res glyph overflows it — characters got clipped at the bottom and bled into the
++	// picture. Draw the compact 16x15 glyph 1:1 into the display buffer instead: it fits
++	// inside the bar, stays sharp (no 2x nearest blur), and keeps the game's own centring
++	// because we still advance by the normal char width.
++	if (upscaled && _screen->compactTextActive()) {
++		if (drawCompact(point, top, left, color))
++			return;
++	}
++
++	// Hi-res path: when ZH_TWN runs upscaled (640x400 display) and we have a hi-res glyph,
++	// draw sharp 32xN strokes directly onto the display instead of the blocky 2x low-res.
++	if (upscaled && _hiIndex.contains(point)) {
++		drawHiRes(point, top, left, color);
++		return;
++	}
++
++	byte glyph[kBig5GlyphMaxW * kBig5GlyphMaxH];
++	memset(glyph, 0, sizeof(glyph));
++	bool drawn = false;
++	if (_big5)
++		drawn = _big5->drawBig5Char(glyph, point, kBig5Width, _big5Height, kBig5Width,
++		                            /*color*/ 1, /*outlineColor*/ 0, /*outline*/ false, /*bpp*/ 1);
++	if (!drawn) {
++		// Fall back to a placeholder so missing glyphs are visible, not silent.
++		_asciiFont->draw('?', top, left, color, greyedOutput);
++		return;
++	}
++
++	uint16 screenWidth = _screen->fontIsUpscaled() ? _screen->getDisplayWidth() : _screen->getWidth();
++	uint16 screenHeight = _screen->fontIsUpscaled() ? _screen->getDisplayHeight() : _screen->getHeight();
++
++	for (int y = 0; y < _big5Height; y++) {
++		for (int x = 0; x < kBig5Width; x++) {
++			if (!glyph[y * kBig5Width + x])
++				continue;
++			int screenX = left + x;
++			int screenY = top + y;
++			if (0 <= screenX && screenX < screenWidth && 0 <= screenY && screenY < screenHeight)
++				_screen->putFontPixel(top, screenX, y, color);
++		}
++	}
++}
++
++// Draw the 16x15 low-res Big5 glyph at 1:1 into the display buffer, centred inside the
++// character cell (2 * kBig5Width display pixels wide). Used for the short status bar.
++// Returns false when the glyph is unavailable so the caller can fall back.
++bool GfxFontChinese::drawCompact(uint16 point, int16 top, int16 left, byte color) {
++	if (!_big5)
++		return false;
++	byte glyph[kBig5GlyphMaxW * kBig5GlyphMaxH];
++	memset(glyph, 0, sizeof(glyph));
++	if (!_big5->drawBig5Char(glyph, point, Graphics::Big5Font::kChineseTraditionalWidth,
++	                         _big5Height, Graphics::Big5Font::kChineseTraditionalWidth,
++	                         /*color*/ 1, /*outlineColor*/ 0, /*outline*/ false, /*bpp*/ 1))
++		return false;
++
++	const int cellW = kBig5Width * 2;
++	const int gw = Graphics::Big5Font::kChineseTraditionalWidth;
++	const int dispLeft = left * 2 + (cellW - gw) / 2;
++	const int dispTop = top * 2;
++	const int dispW = _screen->getDisplayWidth();
++	const int dispH = _screen->getDisplayHeight();
++
++	const bool savedUpscaled = _screen->fontIsUpscaled();
++	_screen->setFontIsUpscaled(true);
++	for (int gy = 0; gy < _big5Height; gy++) {
++		const int dispY = dispTop + gy;
++		if (dispY < 0 || dispY >= dispH)
++			continue;
++		for (int gx = 0; gx < gw; gx++) {
++			if (!glyph[gy * gw + gx])
++				continue;
++			const int dispX = dispLeft + gx;
++			if (dispX < 0 || dispX >= dispW)
++				continue;
++			_screen->putFontPixel(dispTop, dispX, gy, color);
++		}
++	}
++	_screen->setFontIsUpscaled(savedUpscaled);
++	return true;
++}
++
++// Draw a hi-res Big5 glyph directly onto the 640x400 display buffer. The game positions
++// text in logical 320x200 coords, so we map (left, top) -> (left*2, top*2) on the display
++// and toggle _fontIsUpscaled so putFontPixel writes straight to the display (no further
++// nearest-scale), giving sharp 32xN strokes. ASCII glyphs are unaffected (they draw with
++// _fontIsUpscaled == false and get the normal 2x upscale, matching the game art).
++void GfxFontChinese::drawHiRes(uint16 point, int16 top, int16 left, byte color) {
++	Common::HashMap<uint16, uint32>::const_iterator it = _hiIndex.find(point);
++	if (it == _hiIndex.end())
++		return;
++	const byte *bmp = &_hiData[it->_value];
++	const int rowBytes = (_hiW + 7) / 8;
++	const int dispLeft = left * 2;
++	const int dispTop = top * 2;
++	const int dispW = _screen->getDisplayWidth();
++	const int dispH = _screen->getDisplayHeight();
++
++	const bool savedUpscaled = _screen->fontIsUpscaled();
++	_screen->setFontIsUpscaled(true);
++	for (int gy = 0; gy < _hiH; gy++) {
++		const int dispY = dispTop + gy;
++		if (dispY < 0 || dispY >= dispH)
++			continue;
++		for (int gx = 0; gx < _hiW; gx++) {
++			if (!(bmp[gy * rowBytes + (gx >> 3)] & (0x80 >> (gx & 7))))
++				continue;
++			const int dispX = dispLeft + gx;
++			if (dispX < 0 || dispX >= dispW)
++				continue;
++			_screen->putFontPixel(dispTop, dispX, gy, color);
++		}
++	}
++	_screen->setFontIsUpscaled(savedUpscaled);
++}
++
++} // End of namespace Sci
+diff --git a/engines/sci/graphics/fontchinese.h b/engines/sci/graphics/fontchinese.h
+new file mode 100644
+index 00000000..3687cf3c
+--- /dev/null
++++ b/engines/sci/graphics/fontchinese.h
+@@ -0,0 +1,80 @@
++/* ScummVM - Graphic Adventure Engine
++ *
++ * ScummVM is the legal property of its developers, whose names
++ * are too numerous to list here. Please refer to the COPYRIGHT
++ * file distributed with this source distribution.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#ifndef SCI_GRAPHICS_FONTCHINESE_H
++#define SCI_GRAPHICS_FONTCHINESE_H
++
++#include "common/array.h"
++#include "common/hashmap.h"
++#include "sci/graphics/scifont.h"
++
++namespace Graphics {
++class Big5Font;
++}
++
++namespace Sci {
++
++/**
++ * Traditional Chinese (Big5) font wrapper for SCI games.
++ *
++ * Wraps the game's original SCI font resource for single-byte (ASCII) glyphs,
++ * and renders double-byte Big5 sequences via ScummVM's shared Graphics::Big5Font.
++ * Selected in GfxCache::getFont when the game language is Common::ZH_TWN.
++ *
++ * This mirrors the low-res Big5 rendering approach used by the sherlock/darkseed
++ * engines (16px-wide glyphs drawn straight into the SCI screen), rather than the
++ * PC-98/Korean hi-res gfx-driver path.
++ */
++class GfxFontChinese : public GfxFont {
++public:
++	GfxFontChinese(ResourceManager *resMan, GfxScreen *screen, GuiResourceId resourceId);
++	~GfxFontChinese() override;
++
++	GuiResourceId getResourceId() override;
++	byte getHeight() override;
++	bool isDoubleByte(uint16 chr) override;
++	byte getCharWidth(uint16 chr) override;
++	byte getCharHeight(uint16 chr) override;
++	void draw(uint16 chr, int16 top, int16 left, byte color, bool greyedOutput) override;
++
++private:
++	// Hi-res Big5 draw for ZH_TWN 640x400 upscale: draws a 32xN glyph straight onto the
++	// display buffer so strokes stay sharp instead of blocky 2x-nearest. See drawHiRes().
++	bool loadHiResFont();
++	bool drawCompact(uint16 point, int16 top, int16 left, byte color);
++	void drawHiRes(uint16 point, int16 top, int16 left, byte color);
++
++	GfxScreen *_screen;
++	GuiResourceId _resourceId;
++	GfxFontFromResource *_asciiFont; // original SCI font, for single-byte glyphs
++	Graphics::Big5Font *_big5;       // shared Traditional Chinese bitmap font (low-res 16px)
++	int _big5Height;
++
++	// Hi-res font (own format, not Graphics::Big5Font which is fixed 16px): each glyph is
++	// _hiH rows x (_hiW/8) bytes, keyed by big-endian Big5 code -> offset into _hiData.
++	Common::HashMap<uint16, uint32> _hiIndex;
++	Common::Array<byte> _hiData;
++	int _hiW, _hiH;
++};
++
++} // End of namespace Sci
++
++#endif // SCI_GRAPHICS_FONTCHINESE_H
+diff --git a/engines/sci/graphics/paint16.cpp b/engines/sci/graphics/paint16.cpp
+index 2e901e8d..e1e6a98a 100644
+--- a/engines/sci/graphics/paint16.cpp
++++ b/engines/sci/graphics/paint16.cpp
+@@ -19,6 +19,8 @@
+  *
+  */
+ 
++#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
++#include "common/file.h"
+ #include "sci/sci.h"
+ #include "sci/engine/features.h"
+ #include "sci/engine/state.h"
+@@ -43,10 +45,17 @@
+ 
+ namespace Sci {
+ 
++// CHT: SQ1 VGA 的標題畫面是 pic 300（彩虹色 "SPACE QUEST" logo ＋ "CHAPTER ONE" 緞帶）。
++// copyright line are drawn on top of it as views/text). We blit the Chinese subtitle
++// overlay onto that picture only.
++static const GuiResourceId kChtTitlePicId = 300;
++
+ GfxPaint16::GfxPaint16(ResourceManager *resMan, SegManager *segMan, GfxCache *cache, GfxPorts *ports, GfxCoordAdjuster16 *coordAdjuster, GfxScreen *screen, GfxPalette *palette, GfxTransitions *transitions, AudioPlayer *audio)
+ 	: _resMan(resMan), _segMan(segMan), _cache(cache), _ports(ports),
+ 	  _coordAdjuster(coordAdjuster), _screen(screen), _palette(palette),
+ 	  _transitions(transitions), _audio(audio), _EGAdrawingVisualize(false),
++	  _chtTitleActive(false), _chtTitleLoaded(false), _chtTitleMapped(false),
++	  _chtTitleW(0), _chtTitleH(0), _chtTitleX(0), _chtTitleY(0),
+ 	  _hiresDrawObjs(nullptr), _hiresPortraitWorkaroundFlag(false) {
+ 
+ 	// _animate and _text16 will be initialized later on
+@@ -88,6 +97,8 @@ void GfxPaint16::debugSetEGAdrawingVisualize(bool state) {
+ }
+ 
+ void GfxPaint16::drawPicture(GuiResourceId pictureId, bool mirroredFlag, bool addToFlag, GuiResourceId paletteId) {
++	if (getenv("SCI_LOG_GFX"))
++		warning("SCI_LOG_GFX drawPicture pic=%d", pictureId);
+ 	// Set up custom per-picture palette mod
+ 	doCustomPicPalette(_screen, pictureId);
+ 
+@@ -106,6 +117,105 @@ void GfxPaint16::drawPicture(GuiResourceId pictureId, bool mirroredFlag, bool ad
+ 
+ 	// Reset custom per-picture palette mod
+ 	_screen->setCurPaletteMapValue(0);
++
++	// CHT: overlay the Traditional Chinese title subtitle onto the title pic (96)'s
++	// visual plane. Kept active so it can be re-asserted if the title animates.
++	_chtTitleActive = (pictureId == kChtTitlePicId && g_sci->getLanguage() == Common::ZH_TWN);
++	if (_chtTitleActive)
++		drawChtTitleOverlay();
++
++	// CHT tooling: dump each drawn pic (display buffer + palette) as PPM, to identify
++	// which resource holds baked-art UI labels. Triggered by SCI_DUMP_PIC=<dir>.
++	if (const char *dir = getenv("SCI_DUMP_PIC")) {
++		const int w = _screen->getDisplayWidth(), h = _screen->getDisplayHeight();
++		const byte *buf = _screen->getDisplayBuffer();
++		const Palette &pal = _palette->_sysPalette;
++		Common::String fn = Common::String::format("%s/pic_%d.ppm", dir, pictureId);
++		Common::DumpFile out;
++		if (out.open(Common::Path(fn))) {
++			Common::String hdr = Common::String::format("P6\n%d %d\n255\n", w, h);
++			out.write(hdr.c_str(), hdr.size());
++			for (int i = 0; i < w * h; i++) {
++				const Color &c = pal.colors[buf[i]];
++				byte rgb[3] = { c.r, c.g, c.b };
++				out.write(rgb, 3);
++			}
++			out.finalize();
++			out.close();
++		}
++	}
++}
++
++// CHT: blit the Traditional Chinese title subtitle (sq1_title.ovl) onto the visual
++// plane, over the title pic (96). The .ovl carries its own small palette; because this is
++// a 256-colour VGA game (not EGA), we nearest-map each overlay colour to the current
++// screen palette once, then write those screen indices. Coordinates are 320x200 script
++// space (putPixel upscales to the display buffer under the hi-res font path).
++// .ovl layout (LE): u16 w,h,x,y; u16 nColors; nColors*(r,g,b); w*h index (0xFF=transparent).
++void GfxPaint16::drawChtTitleOverlay() {
++	if (!_chtTitleLoaded) {
++		_chtTitleLoaded = true; // one attempt; on failure stay empty and no-op
++		Common::File ovl;
++		if (ovl.open("sq1_title.ovl")) {
++			_chtTitleW = ovl.readUint16LE();
++			_chtTitleH = ovl.readUint16LE();
++			_chtTitleX = ovl.readUint16LE();
++			_chtTitleY = ovl.readUint16LE();
++			uint16 nColors = ovl.readUint16LE();
++			_chtTitlePal.resize((uint32)nColors * 3);
++			for (uint32 i = 0; i < _chtTitlePal.size() && !ovl.eos(); i++)
++				_chtTitlePal[i] = ovl.readByte();
++			uint32 n = (uint32)_chtTitleW * _chtTitleH;
++			_chtTitleData.resize(n);
++			for (uint32 i = 0; i < n && !ovl.eos(); i++)
++				_chtTitleData[i] = ovl.readByte();
++			ovl.close();
++		}
++	}
++	if (_chtTitleData.empty() || _chtTitlePal.empty())
++		return;
++
++	// Nearest-map the overlay palette to the current screen palette (once).
++	if (!_chtTitleMapped) {
++		const uint nColors = _chtTitlePal.size() / 3;
++		_chtTitleMap.resize(nColors);
++		const Palette &sys = _palette->_sysPalette;
++		for (uint c = 0; c < nColors; c++) {
++			const int r = _chtTitlePal[c * 3], g = _chtTitlePal[c * 3 + 1], b = _chtTitlePal[c * 3 + 2];
++			int best = 1 << 30, bi = 0;
++			for (int i = 0; i < 256; i++) {
++				const Color &sc = sys.colors[i];
++				const int dr = r - sc.r, dg = g - sc.g, db = b - sc.b;
++				const int d = dr * dr + dg * dg + db * db;
++				if (d < best) { best = d; bi = i; }
++			}
++			_chtTitleMap[c] = (byte)bi;
++		}
++		_chtTitleMapped = true;
++	}
++
++	// [刻意] 座標系用 **script(320x200)** 而不是 display(640x400)，即使繁中模式下
++	// display 已經是 640x400。理由是標題 pic 本身就是 320x200 的點陣美術被引擎 2x 放大；
++	// 副標若走 putPixelOnDisplay 直繪會比它上面的 logo 還銳利，看起來像貼上去的外來物。
++	// 倚天硬邊點陣同步被 2x 放大，質感才跟原畫一致（見 tools/build_title_overlay_eten.py）。
++	// 對白文字是另一回事——那要讀，所以走 hi-res 直繪（GfxFontChinese）。兩者別互套。
++	const int sw = _screen->getWidth();
++	const int sh = _screen->getHeight();
++	if (getenv("SCI_LOG_GFX"))
++		warning("SCI_LOG_GFX title overlay: script=%dx%d disp=%dx%d ovl=%dx%d @(%d,%d)",
++		        sw, sh, _screen->getDisplayWidth(), _screen->getDisplayHeight(),
++		        _chtTitleW, _chtTitleH, _chtTitleX, _chtTitleY);
++	uint32 i = 0;
++	for (uint16 yy = 0; yy < _chtTitleH; yy++) {
++		for (uint16 xx = 0; xx < _chtTitleW; xx++, i++) {
++			const byte idx = _chtTitleData[i];
++			if (idx == 0xFF || idx >= _chtTitleMap.size())
++				continue;
++			const int px = _chtTitleX + xx, py = _chtTitleY + yy;
++			if (px >= 0 && py >= 0 && px < sw && py < sh)
++				_screen->putPixel(px, py, GFX_SCREEN_MASK_VISUAL, _chtTitleMap[idx], 0, 0);
++		}
++	}
+ }
+ 
+ // This one is the only one that updates screen!
+diff --git a/engines/sci/graphics/paint16.h b/engines/sci/graphics/paint16.h
+index d2421f0b..c9b5a69f 100644
+--- a/engines/sci/graphics/paint16.h
++++ b/engines/sci/graphics/paint16.h
+@@ -22,6 +22,8 @@
+ #ifndef SCI_GRAPHICS_PAINT16_H
+ #define SCI_GRAPHICS_PAINT16_H
+ 
++#include "common/array.h"
++
+ namespace Sci {
+ 
+ class GfxPorts;
+@@ -99,6 +101,18 @@ private:
+ 	// true means make EGA picture drawing visible
+ 	bool _EGAdrawingVisualize;
+ 
++	// CHT: Traditional Chinese title subtitle overlay, blitted onto the title pic's
++	// visual plane (pic 96). The .ovl carries its own small palette which is
++	// nearest-mapped once to the current VGA screen palette. See paint16.cpp.
++	bool _chtTitleActive;
++	bool _chtTitleLoaded;
++	bool _chtTitleMapped;
++	uint16 _chtTitleW, _chtTitleH, _chtTitleX, _chtTitleY;
++	Common::Array<byte> _chtTitleData;   // per-pixel overlay index, 0xFF = transparent
++	Common::Array<byte> _chtTitlePal;    // nColors*3 RGB (overlay's own palette)
++	Common::Array<byte> _chtTitleMap;    // overlay index -> screen palette index (cached)
++	void drawChtTitleOverlay();
++
+ 	// The original KQ6WinCD interpreter saves the hires drawing information in a linked list. There are two use cases: one is redrawing the
+ 	// window background when receiving WM_PAINT messages (which is irrelevant for us, since that happens in the backend) and the other is
+ 	// redrawing the inventory after displaying a text window over it. This only happens in mixed speech+text mode, which does not even exist
+diff --git a/engines/sci/graphics/screen.cpp b/engines/sci/graphics/screen.cpp
+index 308fa82c..68848bf5 100644
+--- a/engines/sci/graphics/screen.cpp
++++ b/engines/sci/graphics/screen.cpp
+@@ -84,6 +84,14 @@ GfxScreen::GfxScreen(ResourceManager *resMan, Common::RenderMode renderMode) : _
+ 		}
+ 	}
+ 
++	// CHT: Traditional Chinese needs a hi-res display buffer so Big5 glyphs render with
++	// real stroke detail instead of a blocky 320x200 nearest-scale. Enable 2x upscaling
++	// (640x400) for ZH_TWN when the game would otherwise run at plain 320x200. Game art
++	// (pics/views) still 2x-upscales as usual; only the Chinese font draws hi-res pixels
++	// directly onto the display buffer (see GfxFontChinese + putFontPixel/_fontIsUpscaled).
++	if (_upscaledHires == GFX_SCREEN_UPSCALED_DISABLED && g_sci->getLanguage() == Common::ZH_TWN)
++		_upscaledHires = GFX_SCREEN_UPSCALED_640x400;
++
+ 	// if not yet set, set those to script-width/height
+ 	if (!_width)
+ 		_width = _scriptWidth;
+@@ -172,6 +180,7 @@ GfxScreen::GfxScreen(ResourceManager *resMan, Common::RenderMode renderMode) : _
+ 	_picNotValidSci11 = 0;
+ 	_unditheringEnabled = true;
+ 	_fontIsUpscaled = false;
++	_compactTextActive = false;
+ 
+ 	if (_resMan->getViewType() != kViewEga) {
+ 		// It is not 100% accurate to set white to be 255 for Amiga 32-color
+diff --git a/engines/sci/graphics/screen.h b/engines/sci/graphics/screen.h
+index eaed025a..f00e39f6 100644
+--- a/engines/sci/graphics/screen.h
++++ b/engines/sci/graphics/screen.h
+@@ -78,6 +78,7 @@ public:
+ 	uint16 getScriptHeight() { return _scriptHeight; }
+ 	uint16 getDisplayWidth() { return _displayWidth; }
+ 	uint16 getDisplayHeight() { return _displayHeight; }
++	const byte *getDisplayBuffer() { return _displayScreen; } // CHT tooling: pic dump
+ 	byte getColorWhite() { return _colorWhite; }
+ 	byte getColorDefaultVectorData() { return _colorDefaultVectorData; }
+ 
+@@ -151,6 +152,14 @@ public:
+ 	void setFontIsUpscaled(bool isUpscaled) { _fontIsUpscaled = isUpscaled; }
+ 	bool fontIsUpscaled() const { return _fontIsUpscaled; }
+ 
++	// CHT: set while painting text into a box whose height the game hard-codes — the
++	// status bar (10 script rows) and the pause panel's readout (9 rows per line). A 24px
++	// hi-res Big5 glyph overflows those: characters got clipped and neighbouring lines
++	// overlapped. When this is set, GfxFontChinese draws the 16x15 glyph 1:1 into the
++	// display buffer instead (7.5 script rows), which fits and still stays sharp.
++	void setCompactTextActive(bool active) { _compactTextActive = active; }
++	bool compactTextActive() const { return _compactTextActive; }
++
+ 	void grabPalette(byte *buffer, uint start, uint num) const;
+ 	void setPalette(const byte *buffer, uint start, uint num, bool update = true);
+ 
+@@ -249,6 +258,7 @@ private:
+ 	 * to the screen size (and we therefore should not upscale it ourselves).
+ 	 */
+ 	bool _fontIsUpscaled;
++	bool _compactTextActive;
+ 
+ 
+ 	// pixel related code, in header so that it can be inlined for performance
+diff --git a/engines/sci/graphics/text16.cpp b/engines/sci/graphics/text16.cpp
+index 9e5647f3..be8c1ebb 100644
+--- a/engines/sci/graphics/text16.cpp
++++ b/engines/sci/graphics/text16.cpp
+@@ -19,6 +19,9 @@
+  *
+  */
+ 
++// CHT tooling hook (SCI_LOG_FONT) needs getenv; allow it for this file only.
++#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
++
+ #include "common/util.h"
+ #include "common/stack.h"
+ #include "common/unicode-bidi.h"
+@@ -39,6 +42,20 @@
+ 
+ namespace Sci {
+ 
++// CHT: a translation whose value starts with 0x0E asks to be drawn with the compact
++// 16x15 glyphs instead of the 24px hi-res ones. That is for the handful of boxes whose
++// height the game hard-codes (the pause panel's display-mode / score readout draws two
++// lines 9 script rows apart, which 24px Chinese would overlap). Keeping the decision in
++// translation.tsv means no per-game string list inside the engine.
++static const char *chtTakeCompact(const char *tr, bool &compact) {
++	if (tr && (byte)tr[0] == 0x0E) {
++		compact = true;
++		return tr + 1;
++	}
++	return tr;
++}
++
++
+ GfxText16::GfxText16(GfxCache *cache, GfxPorts *ports, GfxPaint16 *paint16, GfxScreen *screen, GfxMacFontManager *macFontManager)
+ 	: _cache(cache), _ports(ports), _paint16(paint16), _screen(screen), _macFontManager(macFontManager) {
+ 	init();
+@@ -70,8 +87,11 @@ GfxFont *GfxText16::GetFont() {
+ }
+ 
+ void GfxText16::SetFont(GuiResourceId fontId) {
+-	if ((_font == nullptr) || (_font->getResourceId() != fontId))
++	if ((_font == nullptr) || (_font->getResourceId() != fontId)) {
+ 		_font = _cache->getFont(fontId);
++		if (getenv("SCI_LOG_FONT"))
++			warning("SCI_LOG_FONT id=%d height=%d", (int)fontId, (int)_font->getHeight());
++	}
+ 
+ 	_ports->_curPort->fontId = _font->getResourceId();
+ 	_ports->_curPort->fontHeight = _font->getHeight();
+@@ -303,7 +323,21 @@ int16 GfxText16::GetLongest(const char *&textPtr, int16 maxWidth, GuiResourceId
+ 		// Break without spaces found, we split the very first word - may also be Kanji/Japanese
+ 
+ 		if (curChar > 0xFF) {
+-			// current character is Japanese
++			// current character is Japanese (or Traditional Chinese Big5)
++
++			// Traditional Chinese (Big5) fan translation: wrap a spaceless run at the
++			// last character that fits. The PC-98 SJIS kinsoku logic below intentionally
++			// over-packs the line by one double-byte char (and does punctuation seek-back);
++			// for centered Big5 text that makes textWidth exceed the box, so Box()'s
++			// CENTER offset = (width - textWidth)/2 goes negative and the first char of the
++			// line is pushed left of the box, clipping its left radical (你->尔, 據->豦).
++			// For ZH_TWN we just keep the characters that already fit within maxWidth.
++			if (g_sci->getLanguage() == Common::ZH_TWN) {
++				if (curCharCount == 0) {
++					// Guarantee forward progress if not even one glyph fits.
++					curCharCount += 2; textPtr += 2;
++				}
++			} else {
+ 
+ 			// PC-9801 SCI actually added the last character, which shouldn't fit anymore, still onto the
+ 			//  screen in case maxWidth wasn't fully reached with the last character
+@@ -360,6 +394,7 @@ int16 GfxText16::GetLongest(const char *&textPtr, int16 maxWidth, GuiResourceId
+ 				// (game mentions Mixed Up Fairy Tales and uses English letters for that)
+ 				textPtr += 2;
+ 			}
++			} // end non-ZH_TWN PC-98 SJIS kinsoku branch
+ 		} else {
+ 			// Add a character to the count for games whose interpreter would count the
+ 			//  character that exceeded the width if a space hadn't been reached yet.
+@@ -442,10 +477,34 @@ void GfxText16::ShowString(const Common::String &str, GuiResourceId orgFontId, i
+ #endif
+ 
+ void GfxText16::DrawString(const Common::String &str, GuiResourceId orgFontId, int16 orgPenColor) {
++	// Traditional Chinese fan translation (content-keyed).
++	if (g_sci->getLanguage() == Common::ZH_TWN) {
++		bool compact = false;
++		const char *tr = g_sci->getChtTranslation(str.c_str());
++		tr = chtTakeCompact(tr ? tr : str.c_str(), compact);
++		if (tr != str.c_str()) {
++			_screen->setCompactTextActive(compact);
++			Draw(tr, 0, strlen(tr), orgFontId, orgPenColor);
++			_screen->setCompactTextActive(false);
++			return;
++		}
++	}
+ 	Draw(str.c_str(), 0, str.size(), orgFontId, orgPenColor);
+ }
+ 
+ int16 GfxText16::Size(Common::Rect &rect, const char *text, uint16 languageSplitter, GuiResourceId fontId, int16 maxWidth) {
++	// Traditional Chinese fan translation: measure the *translated* string. kTextSize
++	// drives the size of the Print/talk window, and Box() below swaps in the Chinese at
++	// draw time — measuring the English here would size the window for the wrong text
++	// (too tall when Chinese is more compact, and worse, too short when it is not).
++	if (g_sci->getLanguage() == Common::ZH_TWN) {
++		bool compact = false;
++		const char *tr = g_sci->getChtTranslation(text);
++		if (tr)
++			text = tr;
++		text = chtTakeCompact(text, compact);
++	}
++
+ 	GuiResourceId previousFontId = GetFontId();
+ 	int16 previousPenColor = _ports->_curPort->penClr;
+ 	int16 maxTextWidth = 0, textWidth;
+@@ -569,6 +628,20 @@ void GfxText16::Box(const char *text, uint16 languageSplitter, bool show, const
+ 	int16 textWidth, maxTextWidth, textHeight;
+ 	int16 offset = 0;
+ 	int16 hline = 0;
++
++	// Traditional Chinese fan translation: swap the original English string for
++	// its Big5 translation (content-keyed). GfxFontChinese renders the double-byte glyphs.
++	bool chtCompact = false;
++	if (g_sci->getLanguage() == Common::ZH_TWN) {
++		const char *tr = g_sci->getChtTranslation(text);
++		if (tr)
++			text = tr;
++		// 標記要對「最終要畫的字串」判,不能只在查表命中時判——kFormat 組出來的
++		// 句子(模板已翻、參數已代入)不會再命中查表,標記是跟著模板譯文帶進來的。
++		text = chtTakeCompact(text, chtCompact);
++	}
++	_screen->setCompactTextActive(chtCompact);
++
+ 	GuiResourceId previousFontId = GetFontId();
+ 	int16 previousPenColor = _ports->_curPort->penClr;
+ 	bool doubleByteMode = false;
+@@ -681,12 +754,24 @@ void GfxText16::Box(const char *text, uint16 languageSplitter, bool show, const
+ 	}
+ 	SetFont(previousFontId);
+ 	_ports->penColor(previousPenColor);
++	_screen->setCompactTextActive(false);
+ }
+ 
+-void GfxText16::DrawString(const Common::String &textOrig) {
++void GfxText16::DrawString(const Common::String &textOrig0) {
+ 	GuiResourceId previousFontId = GetFontId();
+ 	int16 previousPenColor = _ports->_curPort->penClr;
+ 
++	// Traditional Chinese fan translation (content-keyed).
++	Common::String textOrig = textOrig0;
++	bool chtCompact = false;
++	if (g_sci->getLanguage() == Common::ZH_TWN) {
++		const char *tr = g_sci->getChtTranslation(textOrig0.c_str());
++		if (tr)
++			textOrig = tr;
++		textOrig = chtTakeCompact(textOrig.c_str(), chtCompact);
++	}
++	_screen->setCompactTextActive(chtCompact);
++
+ 	Common::String text;
+ 	if (!g_sci->isLanguageRTL())
+ 		text = textOrig;
+@@ -700,11 +785,47 @@ void GfxText16::DrawString(const Common::String &textOrig) {
+ 
+ // we need to have a separate status drawing code
+ //  In KQ4 the IV char is actually 0xA, which would otherwise get considered as linebreak and not printed
+-void GfxText16::DrawStatus(const Common::String &strOrig) {
++void GfxText16::DrawStatus(const Common::String &strOrig0) {
+ 	GetFont();
+ 	if (!_font)
+ 		return;
+ 
++	// Traditional Chinese fan translation (content-keyed).
++	Common::String strOrig = strOrig0;
++	if (g_sci->getLanguage() == Common::ZH_TWN) {
++		const char *tr = g_sci->getChtTranslation(strOrig0.c_str());
++		if (tr) {
++			strOrig = tr;
++		} else {
++			// SQ4's status bar is assembled at runtime and centred with 0x06 padding,
++			// e.g. "\x06...\x06Space Quest \x1d - Vohaul's Revenge \x1f" (the 0x1d/0x1f
++			// bytes are Roman numerals drawn from a special status font). A whole-string
++			// lookup therefore always misses, so replace the known English label
++			// fragments instead; the Chinese lives in translation.tsv, not here, and the
++			// padding/numeral bytes are left untouched so centring still works.
++			static const char *const kStatusFrags[] = {
++				"Space Quest ",
++				" - The Sarien Encounter",
++				" - The Pirates of Pestulon",
++				" - Roger Wilco and The Time Rippers",
++				" - Latex Babes of Estros",
++				" - Vohaul's Revenge",
++				"Score: ", " of ",
++				nullptr
++			};
++			for (int i = 0; kStatusFrags[i]; ++i) {
++				const char *frag = g_sci->getChtTranslation(kStatusFrags[i]);
++				if (!frag)
++					continue;
++				Common::String key(kStatusFrags[i]);
++				Common::String val(frag);
++				uint32 pos;
++				while ((pos = strOrig.find(key)) != Common::String::npos)
++					strOrig.replace(pos, key.size(), val);
++			}
++		}
++	}
++
+ 	Common::String str;
+ 	if (!g_sci->isLanguageRTL())
+ 		str = strOrig;
+@@ -717,8 +838,18 @@ void GfxText16::DrawStatus(const Common::String &strOrig) {
+ 
+ 	rect.top = _ports->_curPort->curTop;
+ 	rect.bottom = rect.top + _ports->_curPort->fontHeight;
+-	while (textLen--) {
++	// CHT: the status bar is only 10 script rows tall; tell GfxFontChinese to use its
++	// compact 16x15 glyphs here so Chinese does not overflow into the picture below.
++	_screen->setCompactTextActive(true);
++	while (textLen) {
+ 		uint16 curChar = *text++;
++		textLen--;
++		// Combine Big5/double-byte lead+trail into one code (the plain byte-by-byte
++		// loop upstream only handles single-byte Latin; Chinese needs this).
++		if (_font->isDoubleByte(curChar) && textLen) {
++			curChar |= (*text++) << 8;
++			textLen--;
++		}
+ 		switch (curChar) {
+ 		case 0:
+ 			break;
+@@ -729,6 +860,7 @@ void GfxText16::DrawStatus(const Common::String &strOrig) {
+ 		}
+ 		}
+ 	}
++	_screen->setCompactTextActive(false);
+ }
+ 
+ // Check for Korean strings, and use font 1001 to render them
+diff --git a/engines/sci/graphics/view.cpp b/engines/sci/graphics/view.cpp
+index 3bc1bc7c..58d346d7 100644
+--- a/engines/sci/graphics/view.cpp
++++ b/engines/sci/graphics/view.cpp
+@@ -19,6 +19,8 @@
+  *
+  */
+ 
++#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
++#include "common/file.h"
+ #include "sci/sci.h"
+ #include "sci/engine/state.h"
+ #include "sci/graphics/drivers/gfxdriver.h"
+@@ -791,6 +793,32 @@ byte GfxView::getMappedColor(byte color, uint16 scaleSignal, const Palette *pale
+ 	return outputColor;
+ }
+ 
++void GfxView::dumpCelsToDir(const char *dir) {
++	const Palette *palette = _embeddedPal ? &_viewPalette : &_palette->_sysPalette;
++	for (int16 loopNo = 0; loopNo < (int16)getLoopCount(); loopNo++) {
++		for (int16 celNo = 0; celNo < (int16)getCelCount(loopNo); celNo++) {
++			const CelInfo *celInfo = getCelInfo(loopNo, celNo);
++			const SciSpan<const byte> &bitmap = getBitmap(loopNo, celNo);
++			const int16 w = celInfo->width, h = celInfo->height;
++			if (w <= 0 || h <= 0)
++				continue;
++			Common::String fn = Common::String::format("%s/view_%d_%d_%d.ppm", dir, _resourceId, loopNo, celNo);
++			Common::DumpFile out;
++			if (!out.open(Common::Path(fn)))
++				continue;
++			Common::String hdr = Common::String::format("P6\n%d %d\n255\n", w, h);
++			out.write(hdr.c_str(), hdr.size());
++			for (int i = 0; i < w * h; i++) {
++				const Color &c = palette->colors[bitmap[i]];
++				byte rgb[3] = { c.r, c.g, c.b };
++				out.write(rgb, 3);
++			}
++			out.finalize();
++			out.close();
++		}
++	}
++}
++
+ void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const Common::Rect &clipRectTranslated,
+ 			int16 loopNo, int16 celNo, byte priority, uint16 EGAmappingNr, bool upscaledHires, uint16 scaleSignal) {
+ 	const Palette *palette = _embeddedPal ? &_viewPalette : &_palette->_sysPalette;
+@@ -799,6 +827,25 @@ void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const
+ 	const int16 celHeight = celInfo->height;
+ 	const int16 celWidth = celInfo->width;
+ 	const byte clearKey = celInfo->clearKey;
++
++	// CHT tooling: identify/extract baked-art view cels.
++	if (getenv("SCI_LOG_GFX"))
++		warning("SCI_LOG_GFX view=%d loop=%d cel=%d %dx%d @(%d,%d)", _resourceId, loopNo, celNo, celWidth, celHeight, rect.left, rect.top);
++	if (const char *vdir = getenv("SCI_DUMP_VIEW")) {
++		Common::String fn = Common::String::format("%s/view_%d_%d_%d.ppm", vdir, _resourceId, loopNo, celNo);
++		Common::DumpFile vout;
++		if (vout.open(Common::Path(fn))) {
++			Common::String hdr = Common::String::format("P6\n%d %d\n255\n", celWidth, celHeight);
++			vout.write(hdr.c_str(), hdr.size());
++			for (int i = 0; i < celWidth * celHeight; i++) {
++				const Color &c = palette->colors[bitmap[i]];
++				byte rgb[3] = { c.r, c.g, c.b };
++				vout.write(rgb, 3);
++			}
++			vout.finalize();
++			vout.close();
++		}
++	}
+ 	const byte drawMask = priority > 15 ? GFX_SCREEN_MASK_VISUAL : GFX_SCREEN_MASK_VISUAL|GFX_SCREEN_MASK_PRIORITY;
+ 
+ 	if (_embeddedPal)
+diff --git a/engines/sci/graphics/view.h b/engines/sci/graphics/view.h
+index 64f20a18..797f9b51 100644
+--- a/engines/sci/graphics/view.h
++++ b/engines/sci/graphics/view.h
+@@ -75,6 +75,9 @@ public:
+ 	uint16 getCelCount(int16 loopNo) const;
+ 	Palette *getPalette();
+ 
++	// CHT tooling: dump every cel of this view as PPM (identify baked-art labels).
++	void dumpCelsToDir(const char *dir);
++
+ 	bool isScaleable();
+ 
+ 	void adjustToUpscaledCoordinates(int16 &y, int16 &x);
+diff --git a/engines/sci/module.mk b/engines/sci/module.mk
+index 94d96a6e..b4c689eb 100644
+--- a/engines/sci/module.mk
++++ b/engines/sci/module.mk
+@@ -48,6 +48,7 @@ MODULE_OBJS := \
+ 	graphics/controls16.o \
+ 	graphics/coordadjuster.o \
+ 	graphics/cursor.o \
++	graphics/fontchinese.o \
+ 	graphics/fontkorean.o \
+ 	graphics/fontsjis.o \
+ 	graphics/macfont.o \
+diff --git a/engines/sci/sci.cpp b/engines/sci/sci.cpp
+index b4d28b79..b18bc79b 100644
+--- a/engines/sci/sci.cpp
++++ b/engines/sci/sci.cpp
+@@ -19,6 +19,9 @@
+  *
+  */
+ 
++// CHT tooling hook (SCI_DUMP_RES) needs getenv; allow it for this file only.
++#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
++
+ #include "common/system.h"
+ #include "common/config-manager.h"
+ #include "common/debug-channels.h"
+@@ -50,6 +53,7 @@
+ #include "sci/sound/soundcmd.h"
+ #include "sci/graphics/animate.h"
+ #include "sci/graphics/cache.h"
++#include "sci/graphics/view.h"
+ #include "sci/graphics/compare.h"
+ #include "sci/graphics/controls16.h"
+ #include "sci/graphics/coordadjuster.h"
+@@ -289,6 +293,34 @@ Common::Error SciEngine::run() {
+ 	}
+ */
+ 
++	// CHT tooling: dump decompressed text/message/script resources as patch files
++	// (uses ScummVM's own SCI decompressor). Triggered by SCI_DUMP_RES=<dir>; quits after.
++	if (const char *dumpDir = getenv("SCI_DUMP_RES")) {
++		const ResourceType dumpTypes[] = { kResourceTypeText, kResourceTypeMessage, kResourceTypeFont, kResourceTypeScript, kResourceTypeHeap, kResourceTypeView, kResourceTypePic, kResourceTypeSound, kResourceTypePatch };
++		for (int ti = 0; ti < (int)ARRAYSIZE(dumpTypes); ++ti) {
++			Common::List<ResourceId> list = _resMan->listResources(dumpTypes[ti], -1);
++			for (Common::List<ResourceId>::iterator it = list.begin(); it != list.end(); ++it) {
++				Resource *r = _resMan->findResource(*it, 0);
++				if (!r)
++					continue;
++				Common::String fn = Common::String::format("%s/%s.%03d", dumpDir,
++					getResourceTypeName(dumpTypes[ti]), it->getNumber());
++				Common::DumpFile out;
++				if (out.open(Common::Path(fn))) {
++					r->writeToStream(&out);
++					out.finalize();
++					out.close();
++				}
++			}
++		}
++		warning("SCI_DUMP_RES: dumped text/message/font resources to %s", dumpDir);
++		return Common::kNoError;
++	}
++
++	// Traditional Chinese fan translation: load the content-keyed translation table.
++	if (getLanguage() == Common::ZH_TWN)
++		loadChtTranslation();
++
+ 	// Add the after market patches for the specified game, if they exist
+ 	_resMan->addNewGMPatch(_gameId);
+ 	_resMan->addNewD110Patch(_gameId);
+@@ -585,6 +617,19 @@ void SciEngine::initGraphics() {
+ 
+ 	_gfxCache = new GfxCache(_resMan, _gfxScreen, _gfxPalette16);
+ 
++	// CHT tooling: dump every VIEW resource's cels as PPM (deterministic, no navigation),
++	// to find baked-art UI labels. Triggered by SCI_DUMP_ALLVIEWS=<dir>; quits after.
++	if (const char *vdir = getenv("SCI_DUMP_ALLVIEWS")) {
++		Common::List<ResourceId> views = _resMan->listResources(kResourceTypeView, -1);
++		for (Common::List<ResourceId>::iterator it = views.begin(); it != views.end(); ++it) {
++			GfxView *v = new GfxView(_resMan, _gfxScreen, _gfxPalette16, it->getNumber());
++			v->dumpCelsToDir(vdir);
++			delete v;
++		}
++		warning("SCI_DUMP_ALLVIEWS: dumped all view cels to %s", vdir);
++		return; // dump done; files flushed. initGraphics is void, so just return.
++	}
++
+ #ifdef ENABLE_SCI32
+ 	if (getSciVersion() >= SCI_VERSION_2) {
+ 		// SCI32 graphic objects creation
+@@ -831,7 +876,95 @@ const char *SciEngine::getGameIdStr() const {
+ 	return _gameDescription->gameId;
+ }
+ 
++// CHT: collapse every run of whitespace (space, \r, \n, \t) to a single space and trim
++// the ends. SCI message resources embed hard "\r\n" line breaks, but translation.tsv keys
++// are single-line with those breaks flattened to spaces -- without this the runtime string
++// (e.g. the kFormat money template "...piece%s,\r\n weighing...") never matches its key.
++// Applied identically to keys at load and to lookups, so an already-matching pair still
++// matches (both collapse the same way).
++static Common::String sciChtNormKey(const Common::String &in) {
++	Common::String out;
++	bool pendingSpace = false, started = false;
++	for (uint i = 0; i < in.size(); ++i) {
++		const char c = in[i];
++		if (c == ' ' || c == '\r' || c == '\n' || c == '\t') {
++			pendingSpace = started; // ignore leading whitespace
++		} else {
++			if (pendingSpace)
++				out += ' ';
++			out += c;
++			pendingSpace = false;
++			started = true;
++		}
++	}
++	return out;
++}
++
++const char *SciEngine::getChtTranslation(const char *original) const {
++	if (_chtTranslation.empty() || !_chtLangOn || !original)   // F8 切到英文時 _chtLangOn=false → 回 nullptr 露原文
++		return nullptr;
++	Common::HashMap<Common::String, Common::String>::const_iterator it = _chtTranslation.find(sciChtNormKey(original));
++	if (it == _chtTranslation.end()) {
++		if (getenv("SCI_CHT_DEBUG"))
++			warning("CHT-MISS[%d]:%s", (int)strlen(original), original);
++		return nullptr;
++	}
++	if (getenv("SCI_CHT_DEBUG"))
++		warning("CHT-HIT[%d]:%s", (int)strlen(original), original);
++	return it->_value.c_str();
++}
++
++static Common::String unescapeCht(const Common::String &in) {
++	Common::String out;
++	for (uint i = 0; i < in.size(); ++i) {
++		if (in[i] == '\\' && i + 1 < in.size()) {
++			char n = in[i + 1];
++			if (n == 'n') { out += '\n'; ++i; continue; }
++			if (n == 't') { out += '\t'; ++i; continue; }
++			if (n == '\\') { out += '\\'; ++i; continue; }
++		}
++		out += in[i];
++	}
++	return out;
++}
++
++void SciEngine::loadChtTranslation() {
++	// Runtime translation file: one entry per line, "<english>\t<big5 bytes>".
++	// TAB (0x09) and LF (0x0A) never occur inside Big5, so they are safe
++	// delimiters. Human-maintained source is UTF-8; the build tool converts it
++	// to this Big5 runtime form. Shipped in the game directory as CHT patch data.
++	Common::File f;
++	if (!f.open("translation.tsv"))
++		return;
++	int count = 0;
++	while (!f.eos()) {
++		Common::String line = f.readLine();
++		if (line.empty())
++			continue;
++		const char *s = line.c_str();
++		const char *tab = strchr(s, '\t');
++		if (!tab || tab == s)
++			continue;
++		Common::String key(s, tab - s);
++		Common::String val(tab + 1);
++		if (val.empty())
++			continue;
++		// Unescape "\\n"->newline and "\\\\"->backslash (SCI0/EGA strings contain
++		// hard line breaks, which cannot sit literally in a line-based TSV).
++		_chtTranslation[sciChtNormKey(unescapeCht(key))] = unescapeCht(val);
++		++count;
++	}
++	debug(1, "CHT: loaded %d translation entries", count);
++}
++
+ Common::Language SciEngine::getLanguage() const {
++	// Traditional Chinese fan translation: allow forcing ZH_TWN via the target's
++	// "language" config key (e.g. --language=zh_TW) so the CHT patch can be applied
++	// on top of the original English game without a dedicated detection entry.
++	if (ConfMan.hasKey("language")) {
++		if (Common::parseLanguage(ConfMan.get("language")) == Common::ZH_TWN)
++			return Common::ZH_TWN;
++	}
+ 	return _gameDescription->language;
+ }
+ 
+diff --git a/engines/sci/sci.h b/engines/sci/sci.h
+index d9361700..ced803d9 100644
+--- a/engines/sci/sci.h
++++ b/engines/sci/sci.h
+@@ -26,6 +26,8 @@
+ #include "common/macresman.h"
+ #include "common/util.h"
+ #include "common/random.h"
++#include "common/hashmap.h"
++#include "common/hash-str.h"
+ #include "sci/engine/vm_types.h"	// for Selector
+ #include "sci/debug.h"	// for DebugState
+ #include "sci/detection.h" // Shared code between detection and engine
+@@ -185,6 +187,17 @@ public:
+ 	const char *getGameIdStr() const;
+ 	Common::Language getLanguage() const;
+ 
++	/**
++	 * Traditional Chinese fan-translation lookup. Returns the Big5-encoded
++	 * translation for an original (English) on-screen string, or nullptr if
++	 * there is none. Content-keyed so translations live in an external
++	 * translation.tsv rather than patched SCI resources.
++	 */
++	const char *getChtTranslation(const char *original) const;
++	void loadChtTranslation();
++	bool chtLangOn() const { return _chtLangOn; } /**< CHT: F8 中/英切換目前是否顯示中文 */
++	void toggleChtLang() { _chtLangOn = !_chtLangOn; }
++
+ 	/**
+ 	 * Returns true if the game's language direction is Right To Left.
+ 	 * RTL support did not exist in the original SCI engine.
+@@ -406,6 +419,8 @@ private:
+ 
+ 	const ADGameDescription *_gameDescription;
+ 	const SciGameId _gameId;
++	Common::HashMap<Common::String, Common::String> _chtTranslation; /**< CHT: English -> Big5 */
++	bool _chtLangOn = true; /**< CHT: F8 中/英切換旗標，false 時 getChtTranslation 回 nullptr → 露原文 */
+ 	ResourceManager *_resMan; /**< The resource manager */
+ 	ScriptPatcher *_scriptPatcher; /**< The script patcher */
+ 	EngineState *_gamestate;

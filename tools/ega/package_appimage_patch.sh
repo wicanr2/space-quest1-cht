@@ -57,8 +57,8 @@ chmod +x "$APPDIR/AppRun"
 cat > "$APPDIR/sq1-ega-cht.desktop" <<DESK
 [Desktop Entry]
 Type=Application
-Name=宇宙傳奇I EGA： 繁體中文化
-Comment=Space Quest II: Vohaul's Revenge (宇宙傳奇I EGA：) 繁體中文化
+Name=宇宙傳奇I（EGA）繁體中文化
+Comment=Space Quest: The Sarien Encounter (1986 EGA 原版) 繁體中文化
 Exec=AppRun
 Icon=sq1-ega-cht
 Categories=Game;

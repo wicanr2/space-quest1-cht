@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 《宇宙傳奇 IV》繁中化 Windows x86_64 打包(mingw 交叉編譯產物)。
+# 《新宇宙傳奇I》(1991 VGA 重製版) 繁中化 Windows x86_64 打包(mingw 交叉編譯產物)。
 #
 #   patch → 引擎 + 中文資料,玩家自備遊戲,上 GitHub Release
 #   full  → 內嵌整個 game\ 與 MT-32 ROM,雙擊即玩,只放本機 dist-all/
@@ -63,10 +63,10 @@ cd /d "%~dp0"
 set GAME=%~1
 if "%GAME%"=="" (
   echo.
-  echo   用法: 把你的「宇宙傳奇 IV」遊戲資料夾拖到這個 .bat 上,或
+  echo   用法: 把你的「新宇宙傳奇I」遊戲資料夾拖到這個 .bat 上,或
   echo         新宇宙傳奇1-中文版.bat D:\games\sq1vga
   echo.
-  echo   遊戲夾內要有 resource.000 / resource.aud / resource.map（自備正版）。
+  echo   遊戲夾內要有 resource.map / resource.000~003（自備正版）。
   echo.
   pause
   exit /b 1
@@ -79,7 +79,7 @@ rem 結果只有第一行進檔案、其餘噴到畫面,遊戲就會說找不到
 >>"%INI%"  echo [sq1-cht]
 >>"%INI%"  echo engineid=sci
 >>"%INI%"  echo gameid=sq1sci
->>"%INI%"  echo description=Space Quest IV CHT
+>>"%INI%"  echo description=Space Quest I VGA CHT
 >>"%INI%"  echo path=%GAME%
 >>"%INI%"  echo extrapath=%~dp0scummvm-cht
 >>"%INI%"  echo language=tw
@@ -100,7 +100,7 @@ set "INI=%~dp0scummvm.ini"
 >>"%INI%"  echo [sq1-cht]
 >>"%INI%"  echo engineid=sci
 >>"%INI%"  echo gameid=sq1sci
->>"%INI%"  echo description=Space Quest IV CHT (full)
+>>"%INI%"  echo description=Space Quest I VGA CHT (full)
 >>"%INI%"  echo path=%~dp0game
 >>"%INI%"  echo extrapath=%~dp0game
 >>"%INI%"  echo language=tw

@@ -57,7 +57,7 @@ BAT
 sed -i "s|__MT32__|${MT32ARGS}|" "$STAGE/宇宙傳奇I EGA-繁中版.bat"
 
 cat > "$STAGE/讀我.txt" <<'TXT'
-宇宙傳奇I EGA： — 繁體中文化（完整版）
+宇宙傳奇I（EGA 1986 原版） — 繁體中文化（完整版）
 
 雙擊「宇宙傳奇I EGA-繁中版.bat」即可遊玩，不需要另外安裝或指定路徑。
 

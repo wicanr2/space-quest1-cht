@@ -49,7 +49,7 @@ if exist "%~dp0game\LOGDIR" (
 BAT
 
 cat > "$STAGE/讀我.txt" <<'TXT'
-宇宙傳奇I EGA： — 繁體中文化（Windows，patch 版）
+宇宙傳奇I（EGA 1986 原版） — 繁體中文化（Windows，patch 版）
 
 本包只含中文化後的 ScummVM 引擎與中文資料，不含遊戲本體，請自備遊戲檔案
 （1987 年 Sierra 發行的 AGI 版，資料夾內應有 LOGDIR、VOL.0~VOL.3、WORDS.TOK、OBJECT 等檔）。

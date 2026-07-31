@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 《宇宙傳奇 IV》繁中化 AppImage 打包(Linux x86_64)。
+# 《新宇宙傳奇I》(1991 VGA 重製版) 繁中化 AppImage 打包(Linux x86_64)。
 #
 #   patch  → 只有引擎 + 中文資料,玩家自備遊戲,上 GitHub Release
 #   full   → 內嵌整個 game/ 與 MT-32 ROM,雙擊即玩,只放本機 dist-all/(不上傳)
@@ -62,8 +62,8 @@ ln -sf sq1-cht.png "$APPDIR/.DirIcon"
 cat > "$APPDIR/sq1-cht.desktop" <<DESK
 [Desktop Entry]
 Type=Application
-Name=宇宙傳奇 IV 時空穿越者（繁體中文版）
-Comment=Space Quest IV: Roger Wilco and the Time Rippers 繁體中文化 — ScummVM
+Name=新宇宙傳奇I（VGA）繁體中文化
+Comment=Space Quest I: The Sarien Encounter (1991 VGA remake) 繁體中文化 — ScummVM
 Exec=AppRun
 Icon=sq1-cht
 Categories=Game;
@@ -78,9 +78,9 @@ set -e
 HERE="\$(dirname "\$(readlink -f "\$0")")"
 export LD_LIBRARY_PATH="\$HERE/usr/lib:\${LD_LIBRARY_PATH:-}"
 if [ -z "\${1:-}" ]; then
-  echo "用法: \$(basename "\$0") <宇宙傳奇 IV 遊戲資料夾> [其他 scummvm 參數...]"
-  echo "  範例: ./SQ1-VGA-CHT-patch-x86_64.AppImage ~/games/sq4"
-  echo "  遊戲夾內要有 resource.000 / resource.aud / resource.map(自備正版)。"
+  echo "用法: \$(basename "\$0") <新宇宙傳奇I 遊戲資料夾> [其他 scummvm 參數...]"
+  echo "  範例: ./SQ1-VGA-CHT-patch-x86_64.AppImage ~/games/sq1vga"
+  echo "  遊戲夾內要有 resource.map / resource.000~003(自備正版)。"
   exit 1
 fi
 GAME="\$(readlink -f "\$1")"; shift
@@ -94,7 +94,7 @@ if [ ! -f "\$CFG" ] || ! grep -qxF "path=\$GAME" "\$CFG"; then
 [sq1-cht]
 engineid=sci
 gameid=sq1sci
-description=宇宙傳奇 IV 時空穿越者（繁體中文）
+description=新宇宙傳奇I：沙利安人的遭遇（繁體中文）
 path=\$GAME
 extrapath=\$HERE/usr/share/scummvm-cht
 language=tw
@@ -121,7 +121,7 @@ cat > "\$CFG" <<CFGEOF
 [sq1-cht]
 engineid=sci
 gameid=sq1sci
-description=宇宙傳奇 IV 時空穿越者（繁體中文・完整版）
+description=新宇宙傳奇I：沙利安人的遭遇（繁體中文・完整版）
 path=\$GAME
 extrapath=\$GAME
 language=tw

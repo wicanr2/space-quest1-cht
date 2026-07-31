@@ -1,71 +1,79 @@
 #!/usr/bin/env bash
-# 把 patched ScummVM + 中文化資料(translation.tsv + 兩個 .fnt + title .ovl)打包成
-# **patch 版** AppImage——不含遊戲資源,玩家自備遊戲、AppRun 第一參數當遊戲路徑。
-# 上 GitHub Release(公開下載)。[HARD] 不得含 resource.*/.drv/.scr/scidhuv.exe。
+# 打包 Linux AppImage **patch 版**（VGA / SCI1 軌）：只有中文化後的 ScummVM 引擎 + 中文資料，
+# 不含遊戲本體。這是要上 GitHub Release 的公開版本，
+# [HARD] 絕不能混入任何遊戲資源或 MT-32 ROM。
+# full 完整版是另一支 package_appimage_full.sh，產物只留本機 dist-all/。
+#
+# 中文如何啟用：SCI 軌是 `--language=tw`（跟 AGI 軌相反，AGI 帶了會進不去遊戲）。
+# 引擎用 Common::File::open() 開字型與譯文表，走 SearchMan，所以 --extrapath 指向包內
+# cht-data 就夠，玩家不必把中文檔案複製進自己的遊戲資料夾。
+#
+# 用法: tools/package_appimage_patch.sh
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"          # /home/anr2/scummvm/conquest_of_longbow/workplace
-REPO_ROOT="$(cd "$ROOT/.." && pwd)"                # /home/anr2/scummvm/conquest_of_longbow
-source "$ROOT/tools/pkg_common.sh"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-STAGE="$ROOT/build/appimg-patch"
-DIST="$ROOT/release-staging"
-APPDIR="$STAGE/AppDir"
-OUT="$DIST/Longbow-CHT-patch-x86_64.AppImage"
-
-mkdir -p "$DIST"
-rm -rf "$APPDIR"; mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share/scummvm-cht"
+# [HARD] Release 資產檔名只能用 ASCII——GitHub 上傳會把中文字整段剝掉。
+LABEL="SQ1-VGA-CHT-patch"
+STAGE="$ROOT/build/appimage"; DIST="$ROOT/dist-patch"
+APPDIR="$STAGE/AppDir-patch"
+rm -rf "$APPDIR"; mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/lib" "$APPDIR/usr/share/cht-data" "$DIST"
 
 echo ">> 複製 scummvm + strip"
 cp "$ROOT/scummvm-src/scummvm" "$APPDIR/usr/bin/scummvm"
-docker run --rm --name longbow-pkg-patch-strip -v "$APPDIR/usr/bin:/b" qfg1-build:latest strip /b/scummvm 2>/dev/null || true
+chmod u+w "$APPDIR/usr/bin/scummvm"
+docker run --rm --name sq1-vgapkg-strip -v "$APPDIR/usr/bin:/b" sq1-build strip /b/scummvm 2>/dev/null || true
 
-echo ">> 收集共享庫(qfg1-build 內 ldd,排除 glibc 核心)"
-docker run --rm --name longbow-pkg-patch-libs \
+echo ">> 收集共享庫（容器內 ldd，排除 glibc 核心）"
+docker run --rm --name sq1-vgapkg-libs \
   -v "$APPDIR/usr/bin/scummvm:/collect/bin:ro" \
   -v "$APPDIR/usr/lib:/collect/out" \
   -v "$ROOT/tools/pkg_collect_libs.py:/collect/collect.py:ro" \
-  -w /collect qfg1-build:latest python3 collect.py bin out
+  -w /collect sq1-build python3 collect.py bin out
 echo "   $(ls "$APPDIR/usr/lib" | wc -l) 個 .so"
 
-echo ">> 放入中文化資料(patch-only,不含遊戲)"
-cp "$ROOT/dist-cht/translation.tsv" "$APPDIR/usr/share/scummvm-cht/"
-cp "$ROOT/dist-cht/longbow_big5.fnt" "$APPDIR/usr/share/scummvm-cht/"
-cp "$ROOT/dist-cht/longbow_big5_hi.fnt" "$APPDIR/usr/share/scummvm-cht/"
-cp "$ROOT/dist-cht/longbow_title.ovl" "$APPDIR/usr/share/scummvm-cht/"
+echo ">> 放入中文資料（只有這些檔，不含遊戲資源、不含 ROM）"
+for f in translation.tsv sq1_big5.fnt sq1_big5_hi.fnt sq1_title.ovl sq1_cels.dat; do
+  cp "$ROOT/dist-cht/$f" "$APPDIR/usr/share/cht-data/"
+done
 
-# AppRun:patch 版玩家自備遊戲——第一參數當遊戲夾路徑,--extrapath 指向中文化資料。
+# AppRun：預設開啟 ScummVM 啟動器讓玩家 Add Game；
+# 若玩家把遊戲夾放在 AppImage 旁邊並命名為 game，就自動帶入直接開玩（跟 README 寫的一致）。
+# [HARD] 不預設 mt32（本包無 ROM，設了會先彈一次阻擋框再退回 AdLib）。
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE/usr/lib:${LD_LIBRARY_PATH:-}"
-if [ -z "${1:-}" ]; then
-  echo "用法: $(basename "$0") <羅賓漢傳奇 遊戲資料夾路徑> [其他 scummvm 參數...]"
-  echo "  範例: ./Longbow-CHT-patch-x86_64.AppImage ~/games/longbow"
-  exit 1
+CHT="$HERE/usr/share/cht-data"
+SCUMMVM="$HERE/usr/bin/scummvm"
+BASE="$(dirname "$(readlink -f "${APPIMAGE:-$0}")")"
+if [ -f "$BASE/game/RESOURCE.MAP" ] || [ -f "$BASE/game/resource.map" ]; then
+  exec "$SCUMMVM" --language=tw --extrapath="$CHT" --path="$BASE/game" --auto-detect "$@"
 fi
-GAME="$1"; shift
-exec "$HERE/usr/bin/scummvm" --path="$GAME" --extrapath="$HERE/usr/share/scummvm-cht" --language=tw --auto-detect "$@"
+exec "$SCUMMVM" --language=tw --extrapath="$CHT" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-cat > "$APPDIR/longbow-cht.desktop" <<DESK
+cat > "$APPDIR/sq1-vga-cht.desktop" <<DESK
 [Desktop Entry]
 Type=Application
-Name=羅賓漢傳奇（繁體中文版・patch）
-Comment=Conquests of the Longbow: The Legend of Robin Hood 繁體中文化 — ScummVM patch(需自備遊戲)
+Name=新宇宙傳奇I（VGA）繁體中文化
+Comment=Space Quest I: The Sarien Encounter (1991 VGA remake) 繁體中文化
 Exec=AppRun
-Icon=longbow-cht
+Icon=sq1-vga-cht
 Categories=Game;
 Terminal=false
 DESK
-cp "$ROOT/tools/assets/longbow-cht.png" "$APPDIR/longbow-cht.png"
-ln -sf longbow-cht.png "$APPDIR/.DirIcon"
+cp "$ROOT/tools/assets/icon.png" "$APPDIR/sq1-vga-cht.png" 2>/dev/null || \
+  cp "$ROOT/../ega/tools/assets/icon.png" "$APPDIR/sq1-vga-cht.png"
+ln -sf sq1-vga-cht.png "$APPDIR/.DirIcon"
 
-rm -f "$OUT"
-echo ">> appimagetool 打包(--appimage-extract-and-run 免 FUSE)"
-docker run --rm --name longbow-pkg-patch-appimagetool -v "$STAGE:/stage" -v "$ROOT/tools/.cache:/cache:ro" -e ARCH=x86_64 -w /stage \
-  qfg1-build:latest bash -c "apt-get update -qq >/dev/null && apt-get install -y -qq file >/dev/null && \
-    /cache/appimagetool-x86_64.AppImage --appimage-extract-and-run 'AppDir' '/stage/$(basename "$OUT")'"
-mv "$STAGE/$(basename "$OUT")" "$OUT"
+OUT="$DIST/${LABEL}-x86_64.AppImage"; rm -f "$OUT"
+echo ">> appimagetool 打包（--appimage-extract-and-run 免 FUSE）"
+docker run --rm --name sq1-vgapkg-appimg -v "$STAGE:/stage" -v "$ROOT/tools/.cache:/cache:ro" \
+  -e ARCH=x86_64 -w /stage sq1-build bash -c \
+  "apt-get update -qq >/dev/null && apt-get install -y -qq file >/dev/null && \
+   /cache/appimagetool-x86_64.AppImage --appimage-extract-and-run 'AppDir-patch' '/stage/out-patch.AppImage'"
+mv "$STAGE/out-patch.AppImage" "$OUT"
 chmod +x "$OUT"
+
 echo ">> 完成: $OUT ($(du -h "$OUT" | cut -f1))"

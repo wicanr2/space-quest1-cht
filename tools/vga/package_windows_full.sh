@@ -40,7 +40,7 @@ if [ "$MODE" = patch ]; then
   echo ">> 放入中文資料(patch-only,不含遊戲)"
   mkdir -p "$STAGE/scummvm-cht"
   cp "$ROOT/dist-cht/translation.tsv" "$ROOT/dist-cht/sq1_big5.fnt" \
-     "$ROOT/dist-cht/sq1_big5_hi.fnt" "$ROOT/dist-cht/sq1_title.ovl" \
+     "$ROOT/dist-cht/sq1_big5_hi.fnt" "$ROOT/dist-cht/sq1_title.ovl" "$ROOT/dist-cht/sq1_cels.dat" \
      "$STAGE/scummvm-cht/"
 else
   echo ">> 放入遊戲資料(game/ 已含中文資料)"

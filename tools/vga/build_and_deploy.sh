@@ -45,8 +45,20 @@ docker run --rm --name sq1-vga-fontbuild -v "$WP":/w -w /w python:3.12-slim bash
   chown -R 1000:1000 /w/dist-cht
 '
 
+echo ">> 3b) 烘「畫在美術裡」的英文招牌成中文（sq1_cels.dat）"
+#   有些英文是畫進 view cel 點陣的（RED ALERT 警示牌），不經任何文字路徑，
+#   內容比對替換抓不到。這裡只烘我們自己畫的那幾張，執行期由引擎蓋上去
+#   （engines/sci/graphics/view.cpp chtReplaceCel）——不重編整支 view，
+#   因為那會把沒改到的原版 cel 一起複製出來，違反「patch 版不含遊戲資源」。
+docker run --rm --name sq1-vga-celbake -v "$WP":/w -w /w python:3.12-slim bash -c '
+  set -e
+  pip install -q --root-user-action=ignore pillow >/dev/null 2>&1 || true
+  python tools/bake_cels_cn.py extract/res dist-cht/sq1_cels.dat
+  chown -R 1000:1000 /w/dist-cht
+'
+
 echo ">> 4) 部署到 game/"
-cp dist-cht/translation.tsv dist-cht/sq1_big5.fnt dist-cht/sq1_big5_hi.fnt game/
+cp dist-cht/translation.tsv dist-cht/sq1_big5.fnt dist-cht/sq1_big5_hi.fnt dist-cht/sq1_cels.dat game/
 [ -f dist-cht/sq1_title.ovl ] && cp dist-cht/sq1_title.ovl game/ || echo "   (尚無標題疊圖，略過)"
 
 echo "== 部署完成 =="

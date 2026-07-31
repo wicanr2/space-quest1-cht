@@ -990,7 +990,7 @@ index 9e5647f3..be8c1ebb 100644
  
  // Check for Korean strings, and use font 1001 to render them
 diff --git a/engines/sci/graphics/view.cpp b/engines/sci/graphics/view.cpp
-index 3bc1bc7c..58d346d7 100644
+index 3bc1bc7c..39d140c1 100644
 --- a/engines/sci/graphics/view.cpp
 +++ b/engines/sci/graphics/view.cpp
 @@ -19,6 +19,8 @@
@@ -1002,7 +1002,115 @@ index 3bc1bc7c..58d346d7 100644
  #include "sci/sci.h"
  #include "sci/engine/state.h"
  #include "sci/graphics/drivers/gfxdriver.h"
-@@ -791,6 +793,32 @@ byte GfxView::getMappedColor(byte color, uint16 scaleSignal, const Palette *pale
+@@ -678,9 +680,107 @@ const SciSpan<const byte> &GfxView::getBitmap(int16 loopNo, int16 celNo) {
+ 				SWAP(pBitmap[j], pBitmap[width - j - 1]);
+ 	}
+ 
++	// CHT tooling: 印出「這一幕實際解到哪些 view cel」，用來定位烘進美術的英文在哪個 view。
++	if (getenv("SCI_LOG_VIEWS"))
++		warning("SCI_LOG_VIEWS view=%d loop=%d cel=%d %dx%d", _resourceId, loopNo, celNo, width, height);
++
++	// CHT: 把烘進美術裡的英文招牌換成中文（見 chtReplaceCel 的說明）。
++	// 放在最後，所以鏡射／undither 都不會再動到我們畫好的字。
++	chtReplaceCel(loopNo, celNo, outBitmap, width, height);
++
+ 	return *cel.rawBitmap;
+ }
+ 
++// -- CHT baked-art cel 置換 -------------------------------------------------
++//
++// 有些英文是**畫**在 view 的 cel 點陣裡的（RED ALERT 警示牌之類），不經任何文字路徑，
++// 內容比對替換抓不到。做法有兩條：
++//   (a) 解碼原 view、換掉那幾個 cel、整支重編成 patch 資源（N.v56）投進遊戲目錄；
++//   (b) 只帶我們自己畫的那幾張中文點陣，執行期蓋回去。
++// **本專案走 (b)**。理由是交付政策：patch 版不得含任何遊戲資源，而 (a) 產出的 .v56 會
++// 連同沒改到的其他 cel 一起把原版美術複製一份出來。(b) 的檔案裡只有我們自己畫的像素。
++//
++// 掛在 getBitmap() 是因為它有 cache（cel.rawBitmap），每個 cel 一輩子只解一次，
++// 所以置換也只做一次，而且 draw/drawScaled/dumpCels 全部自動吃到。
++//
++// sq1_cels.dat 佈局（LE）：
++//   "CHTC" u16 version(=1) u16 count
++//   每筆：u16 viewId, u16 loop, u16 cel, u16 w, u16 h, 然後 w*h 個 palette index
++// index 是**該 view 內嵌調色盤**的 index（烘的時候就是從同一支 view 取的），所以不必
++// 再做最近色對應。尺寸對不上就跳過不換（寧可留英文，也不要畫爛）。
++struct ChtCelKey {
++	uint16 viewId, loop, cel;
++	bool operator<(const ChtCelKey &o) const {
++		if (viewId != o.viewId) return viewId < o.viewId;
++		if (loop != o.loop) return loop < o.loop;
++		return cel < o.cel;
++	}
++};
++
++static bool s_chtCelsLoaded = false;
++static Common::Array<ChtCelKey> s_chtCelKeys;
++static Common::Array<Common::Array<byte> > s_chtCelData;
++static Common::Array<uint32> s_chtCelDims; // (w << 16) | h
++
++static void chtLoadCels() {
++	s_chtCelsLoaded = true;
++	Common::File f;
++	if (!f.open("sq1_cels.dat")) {
++		warning("CHT: 找不到 sq1_cels.dat，烘進美術的英文招牌維持原樣");
++		return;
++	}
++	byte magic[4];
++	if (f.read(magic, 4) != 4 || memcmp(magic, "CHTC", 4) != 0) {
++		warning("CHT: sq1_cels.dat 檔頭不對");
++		return;
++	}
++	const uint16 version = f.readUint16LE();
++	const uint16 count = f.readUint16LE();
++	if (version != 1)
++		return;
++	for (uint16 i = 0; i < count && !f.eos(); i++) {
++		ChtCelKey k;
++		k.viewId = f.readUint16LE();
++		k.loop = f.readUint16LE();
++		k.cel = f.readUint16LE();
++		const uint16 w = f.readUint16LE();
++		const uint16 h = f.readUint16LE();
++		const uint32 n = (uint32)w * h;
++		Common::Array<byte> data;
++		data.resize(n);
++		if (n && f.read(&data[0], n) != n)
++			return;
++		s_chtCelKeys.push_back(k);
++		s_chtCelDims.push_back(((uint32)w << 16) | h);
++		s_chtCelData.push_back(data);
++	}
++	f.close();
++	warning("CHT: sq1_cels.dat 載入 %u 張中文 cel", (uint)s_chtCelKeys.size());
++}
++
++void GfxView::chtReplaceCel(int16 loopNo, int16 celNo, SciSpan<byte> &bitmap, int16 width, int16 height) {
++	if (g_sci->getLanguage() != Common::ZH_TWN)
++		return;
++	if (!s_chtCelsLoaded)
++		chtLoadCels();
++	if (s_chtCelKeys.empty())
++		return;
++	for (uint i = 0; i < s_chtCelKeys.size(); i++) {
++		const ChtCelKey &k = s_chtCelKeys[i];
++		if (k.viewId != (uint16)_resourceId || k.loop != (uint16)loopNo || k.cel != (uint16)celNo)
++			continue;
++		const uint16 w = (uint16)(s_chtCelDims[i] >> 16), h = (uint16)(s_chtCelDims[i] & 0xFFFF);
++		if (w != (uint16)width || h != (uint16)height) {
++			warning("CHT cel %d.%d.%d 尺寸不符（檔案 %dx%d，遊戲 %dx%d），跳過",
++			        k.viewId, k.loop, k.cel, w, h, width, height);
++			return;
++		}
++		memcpy(bitmap.getUnsafeDataAt(0, (uint32)w * h), &s_chtCelData[i][0], (uint32)w * h);
++		warning("CHT: 換上中文 cel %d.%d.%d", k.viewId, k.loop, k.cel);
++		return;
++	}
++}
++
+ /**
+  * Called after unpacking an EGA cel, this will try to undither (parts) of the
+  * cel if the dithering in here matches dithering used by the current picture.
+@@ -791,6 +891,32 @@ byte GfxView::getMappedColor(byte color, uint16 scaleSignal, const Palette *pale
  	return outputColor;
  }
  
@@ -1035,7 +1143,7 @@ index 3bc1bc7c..58d346d7 100644
  void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const Common::Rect &clipRectTranslated,
  			int16 loopNo, int16 celNo, byte priority, uint16 EGAmappingNr, bool upscaledHires, uint16 scaleSignal) {
  	const Palette *palette = _embeddedPal ? &_viewPalette : &_palette->_sysPalette;
-@@ -799,6 +827,25 @@ void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const
+@@ -799,6 +925,25 @@ void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const
  	const int16 celHeight = celInfo->height;
  	const int16 celWidth = celInfo->width;
  	const byte clearKey = celInfo->clearKey;
@@ -1061,16 +1169,52 @@ index 3bc1bc7c..58d346d7 100644
  	const byte drawMask = priority > 15 ? GFX_SCREEN_MASK_VISUAL : GFX_SCREEN_MASK_VISUAL|GFX_SCREEN_MASK_PRIORITY;
  
  	if (_embeddedPal)
+@@ -849,6 +994,32 @@ void GfxView::draw(const Common::Rect &rect, const Common::Rect &clipRect, const
+ 
+ 	// Reset custom per-view palette mod
+ 	_screen->setCurPaletteMapValue(oldpalvalue);
++
++	// CHT tooling: SCI_SHOT_ON_VIEW=<id>[,<dir>] → 這支 view 一畫上去就把整個畫面存成 PPM。
++	// 用途是抓「只閃一下」的畫面（倒數計時面板那種），headless 定時連拍根本拍不到；
++	// 要看的是「烘進美術的字在實際版面裡長什麼樣、旁邊還疊了什麼」再決定怎麼重畫。
++	if (const char *want = getenv("SCI_SHOT_ON_VIEW")) {
++		if (atoi(want) == _resourceId) {
++			static int shotSeq = 0;
++			const char *dir = strchr(want, ',');
++			Common::String path = Common::String::format("%s/shot_view%d_%03d.ppm",
++			        dir ? dir + 1 : ".", _resourceId, shotSeq++);
++			const int dw = _screen->getDisplayWidth(), dh = _screen->getDisplayHeight();
++			const byte *buf = _screen->getDisplayBuffer();
++			Common::DumpFile sout;
++			if (sout.open(Common::Path(path))) {
++				Common::String hdr = Common::String::format("P6\n%d %d\n255\n", dw, dh);
++				sout.write(hdr.c_str(), hdr.size());
++				for (int i = 0; i < dw * dh; i++) {
++					const Color &c = _palette->_sysPalette.colors[buf[i]];
++					byte rgb[3] = { c.r, c.g, c.b };
++					sout.write(rgb, 3);
++				}
++				sout.finalize();
++				sout.close();
++			}
++		}
++	}
+ }
+ 
+ void GfxView::drawScaled(const Common::Rect &rect, const Common::Rect &clipRect, const Common::Rect &clipRectTranslated,
 diff --git a/engines/sci/graphics/view.h b/engines/sci/graphics/view.h
-index 64f20a18..797f9b51 100644
+index 64f20a18..20c7a9cb 100644
 --- a/engines/sci/graphics/view.h
 +++ b/engines/sci/graphics/view.h
-@@ -75,6 +75,9 @@ public:
+@@ -75,6 +75,12 @@ public:
  	uint16 getCelCount(int16 loopNo) const;
  	Palette *getPalette();
  
 +	// CHT tooling: dump every cel of this view as PPM (identify baked-art labels).
 +	void dumpCelsToDir(const char *dir);
++
++	// CHT: 把烘進美術裡的英文招牌換成我們畫的中文點陣（sq1_cels.dat），實作在 view.cpp。
++	void chtReplaceCel(int16 loopNo, int16 celNo, SciSpan<byte> &bitmap, int16 width, int16 height);
 +
  	bool isScaleable();
  

@@ -9,6 +9,17 @@
 這個專案把這條路上的每一句話翻成繁體中文：EGA 版 1440 則、VGA 版 2560 則，加上道具名、選單與狀態列。**1986 年的 EGA 原版與 1991 年的 VGA 重製版都做**，兩版引擎不同，各自獨立翻譯。交付形式是 ScummVM 引擎的 patch，**不含遊戲本體**；想直接玩，跳到[怎麼玩](#怎麼玩)。
 
 <p align="center">
+  <a href="https://youtu.be/HWkjkNDKDHI">
+    <img src="docs/assets/promo-thumb.jpg" width="640" alt="宣傳影片：宇宙傳奇I 繁體中文化（YouTube）">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://youtu.be/HWkjkNDKDHI"><b>▶ 宣傳影片（42 秒）</b></a><br>
+  <sub>畫面全是實機截圖，配樂是從遊戲本體側錄的 Roland MT-32 原版音樂</sub>
+</p>
+
+<p align="center">
   <img src="docs/assets/vga-title-cht.png" width="640" alt="VGA 版標題畫面，英文 logo 上方疊了中文副標">
 </p>
 

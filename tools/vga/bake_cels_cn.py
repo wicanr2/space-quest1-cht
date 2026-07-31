@@ -40,23 +40,25 @@ ETEN = os.path.join(HERE, "assets", "eten")
 #             ('tear', y0, y1)   挖掉幾列
 # slant     每個字往上抬幾列（招牌本身是斜的，橫排中文貼上去會很出戲）
 # neon      每個 cel 指定「哪一個字最亮」，模仿原版霓虹燈依序點亮；其餘字用 fg_dim
+# 兩塊招牌都選 v3（使用者 2026-07-31 定案）。點陣圖由 tools/design_signs.py 產出。
+#
+# cel_dim = 每一格往下壓幾階，做霓虹脈動。**只作用在 ladder 列出的字色**——
+# 火箭酒吧補回去的旗面、警報的黑底都不能跟著閃，否則整塊招牌會忽明忽暗像在呼吸。
+NEON_LADDER = [[(159, 239, 167), (135, 223, 67), (35, 187, 35), (23, 119, 23)]]
+ALERT_LADDER = [[(228, 103, 103), (222, 70, 70), (216, 38, 38), (184, 32, 32)]]
+
 JOBS = [
     dict(
         view=104, loop=3, cels=[0, 1, 2, 3, 4, 5],
-        text="警報",
-        fg=13, bg=0, frame=(12, 2),
-        # 原版這六格是「字母缺角、位移」的破圖式閃爍。中文只有兩個字，照抄破圖會讓單張
-        # 畫面看起來像字型壞掉（實測截圖確認），所以改成**明暗脈動**：同樣是閃，但每一格
-        # 單獨看都是完整的字。
-        cel_fg=[12, 13, 13, 13, 11, 12],
-        note="阿寇達號走廊牆上的 RED ALERT 閃爍警示牌",
+        png="out/design/alert_v3.png",
+        ladder=ALERT_LADDER, cel_dim=[1, 0, 0, 0, 2, 1],
+        note="阿寇達號走廊的 RED ALERT 閃爍警示牌 → 警報（一列飾帶 + 三階燈管）",
     ),
     dict(
         view=141, loop=0, cels=[0, 1, 2, 3],
-        text="火箭酒吧",
-        fg=35, fg_dim=180, bg=15, slant=2,
-        neon=[None, 0, 1, 2],
-        note="尤倫斯荒原「火箭酒吧」的霓虹招牌（原文 ROCKET，字母是斜著往右上排的）",
+        png="out/design/rocket_v3.png",
+        ladder=NEON_LADDER, cel_dim=[0, 0, 1, 0],
+        note="尤倫斯荒原的 ROCKET 霓虹招牌 → 火箭酒吧（透明底，只補英文那 958 px）",
     ),
 ]
 
@@ -79,9 +81,68 @@ def glyph_rows(font, ch):
             for y in range(font.h)]
 
 
+ALPHA_KEY = (255, 0, 255)   # 設計稿裡代表「透明」的哨兵色（洋紅），不在遊戲調色盤內
+
+
+def dim_rgb(rgb, ladder, step):
+    """沿著顏色階梯把某個顏色壓暗 step 階；不在階梯上的顏色原樣不動。
+
+    霓虹脈動只能作用在**字的顏色**上——招牌補回去的旗面、燈箱的黑底都不該跟著閃，
+    否則整塊招牌會忽明忽暗像在呼吸。
+    """
+    if step <= 0:
+        return rgb
+    for lad in ladder:
+        if rgb in lad:
+            i = lad.index(rgb)
+            return lad[min(i + step, len(lad) - 1)]
+    return rgb
+
+
+def png_indices(path, w, h, palette, allowed=None, clear=None, ladder=(), step=0):
+    """把設計師交的 PNG 轉成 cel 的 palette index。
+
+    尺寸必須完全相符——縮放點陣美術會糊掉，寧可直接報錯。顏色用最近色對應到
+    該 view 的調色盤（設計稿只用清單內的顏色時，這一步是 1:1 命中）。
+    """
+    from PIL import Image
+    im = Image.open(path).convert('RGB')
+    if im.size != (w, h):
+        raise SystemExit(f"{path} 是 {im.size[0]}x{im.size[1]}，這格 cel 是 {w}x{h}——尺寸要完全相符")
+    px = im.load()
+    pal = palette or [(i, i, i) for i in range(256)]
+    idxs = range(256) if allowed is None else allowed
+    cache, out = {}, bytearray(w * h)
+    for y in range(h):
+        for x in range(w):
+            rgb = px[x, y]
+            # 透明要用哨兵色標，不能靠「畫成黑色」——有些 view 的 clearKey 本身就是黑
+            # （view 104 的 clearKey idx=34 就是 rgb(0,0,0)），最近色對應分不出來，
+            # 會把整塊底板變成透明。
+            if clear is not None and rgb == ALPHA_KEY:
+                out[y * w + x] = clear
+                continue
+            if step:
+                rgb = dim_rgb(rgb, ladder, step)
+            i = cache.get(rgb)
+            if i is None:
+                best, bd = 0, 1 << 30
+                for k in idxs:
+                    pr, pg, pb = pal[k]
+                    d = (pr - rgb[0]) ** 2 + (pg - rgb[1]) ** 2 + (pb - rgb[2]) ** 2
+                    if d < bd:
+                        bd, best = d, k
+                cache[rgb] = i = best
+            out[y * w + x] = i
+    return out
+
+
 def render(job, w, h, font, bright=None):
     """畫出一張 w×h 的 index bitmap（不含 glitch）。bright = 哪一個字用亮色。"""
     bmp = bytearray([job['bg']]) * (w * h)
+    # opaque=True 時整格塗滿底色（預設 bg 若等於 cel 的 clearKey 就是透明底）。
+    # 用途：招牌本體畫在 pic（向量、不可重繪）時，把疊在上面的動畫層做成不透明底板，
+    # 直接把底下的英文蓋掉。
     chars = list(job['text'])
     gw, gh = font.w, font.h
     total = gw * len(chars)
@@ -147,12 +208,20 @@ def main():
         preview = sys.argv[sys.argv.index("--preview") + 1]
         os.makedirs(preview, exist_ok=True)
 
+    overrides = {}
+    for k, a in enumerate(sys.argv):
+        if a == '--png':
+            vid, path = sys.argv[k + 1].split(':', 1)
+            overrides[int(vid)] = path
+
     font = load_font()
     entries = []
     for job in JOBS:
         vp = os.path.join(res_dir, f"view.{job['view']:03d}")
         v = SCI1View(open(vp, 'rb').read())
         cels = v.loops[job['loop']]
+        if job['view'] in overrides:
+            job = dict(job, png=overrides[job['view']])
         neon = job.get('neon')
         cel_fg = job.get('cel_fg')
         for n, ci in enumerate(job['cels']):
@@ -160,9 +229,15 @@ def main():
             j = dict(job)
             if cel_fg and n < len(cel_fg):
                 j['fg'] = cel_fg[n]
-            base = render(j, c.w, c.h, font, neon[n] if neon and n < len(neon) else None)
+            if j.get('png'):
+                dims = j.get('cel_dim') or []
+                base = png_indices(j['png'], c.w, c.h, v.palette, j.get('allowed'),
+                                   c.clear, j.get('ladder', ()), dims[n] if n < len(dims) else 0)
+            else:
+                base = render(j, c.w, c.h, font, neon[n] if neon and n < len(neon) else None)
             g = job.get('glitch') or [None] * len(job['cels'])
-            bmp = apply_glitch(base, c.w, c.h, j["bg"], g[n] if n < len(g) else None)
+            bmp = apply_glitch(base, c.w, c.h, j.get("bg", c.clear),
+                               g[n] if n < len(g) else None)
             entries.append((job['view'], job['loop'], ci, c.w, c.h, bytes(bmp)))
             if preview:
                 from PIL import Image
@@ -171,8 +246,9 @@ def main():
                 im.putdata([pal[b] for b in bmp])
                 im = im.resize((c.w * 6, c.h * 6), Image.NEAREST)
                 im.save(os.path.join(preview, f"v{job['view']}_l{job['loop']}_c{ci}.png"))
+        src = job.get('png') or f"「{job.get('text', '')}」"
         print(f"  view {job['view']} loop {job['loop']} cels {job['cels']} "
-              f"→ 「{job['text']}」  ({job['note']})")
+              f"← {src}  ({job['note']})")
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, 'wb') as fh:
